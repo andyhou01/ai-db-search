@@ -1,11 +1,9 @@
-import { Info } from "lucide-react";
 import { Alert, AlertDescription } from "./ui/alert";
 
-export const ProjectInfo = () => {
+export default function Footer() {
   return (
-    <div className="p-4 mt-auto bg-muted">
-      <Alert className="border-0 bg-muted text-muted-foreground">
-        <Info className="w-4 h-4 text-primary" />
+    <footer className="fixed bottom-0 right-0 ml-64 w-[calc(100%-16rem)] text-center">
+      <Alert className="bg-transparent border-0 text-muted-foreground">
         <AlertDescription>
           This application leverages{" "}
           <span className="font-bold text-primary">AI Agent Technology</span> to
@@ -13,6 +11,6 @@ export const ProjectInfo = () => {
           seamless and intuitive.
         </AlertDescription>
       </Alert>
-    </div>
+    </footer>
   );
-};
+}

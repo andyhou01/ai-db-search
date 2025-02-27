@@ -10,12 +10,10 @@ import {
 import { Config, Result } from "@/lib/types";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { ProjectInfo } from "@/components/project-info";
 import { Results } from "@/components/results";
 import { SuggestedQueries } from "@/components/suggested-queries";
 import { QueryViewer } from "@/components/query-viewer";
 import { Search } from "@/components/search";
-import { Header } from "@/components/header";
 
 export default function Page() {
   const [inputValue, setInputValue] = useState("");
@@ -82,16 +80,16 @@ export default function Page() {
   };
 
   return (
-    <div className="bg-neutral-50 dark:bg-neutral-900 flex items-start justify-center p-0 sm:p-8">
-      <div className="w-full max-w-4xl min-h-dvh sm:min-h-0 flex flex-col ">
+    <div className="flex items-start justify-center p-0 bg-neutral-50 dark:bg-neutral-900 sm:p-8">
+      <div className="flex flex-col w-full max-w-4xl min-h-dvh sm:min-h-0 ">
         <motion.div
-          className="bg-card rounded-xl sm:border sm:border-border flex-grow flex flex-col"
+          className="flex flex-col flex-grow bg-card rounded-xl sm:border sm:border-border"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <div className="p-6 sm:p-8 flex flex-col flex-grow">
-            <Header handleClear={handleClear} />
+          <div className="flex flex-col flex-grow p-6 sm:p-8">
+            {/* <Header handleClear={handleClear} /> */}
             <Search
               handleClear={handleClear}
               handleSubmit={handleSubmit}
@@ -125,8 +123,8 @@ export default function Page() {
                         />
                       )}
                       {loading ? (
-                        <div className="h-full absolute bg-background/50 w-full flex flex-col items-center justify-center space-y-4">
-                          <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                        <div className="absolute flex flex-col items-center justify-center w-full h-full space-y-4 bg-background/50">
+                          <Loader2 className="w-12 h-12 animate-spin text-muted-foreground" />
                           <p className="text-foreground">
                             {loadingStep === 1
                               ? "Generating SQL query..."
@@ -134,7 +132,7 @@ export default function Page() {
                           </p>
                         </div>
                       ) : results.length === 0 ? (
-                        <div className="flex-grow flex items-center justify-center">
+                        <div className="flex items-center justify-center flex-grow">
                           <p className="text-center text-muted-foreground">
                             No results found.
                           </p>
@@ -152,7 +150,6 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <ProjectInfo />
         </motion.div>
       </div>
     </div>

@@ -2,6 +2,9 @@ import "./globals.css";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import { ThemeProvider } from "next-themes";
+import Sidebar from "@/components/sidebar";
+import Header from "@/components/header";
+import Footer from "@/components/footer";
 
 export const metadata = {
   title: "AI DB Search",
@@ -17,7 +20,14 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${GeistMono.className} ${GeistSans.className}`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
+          <div className="flex">
+            <Sidebar />
+            <div className="flex-1 ml-64">
+              <Header />
+              <main className="p-8 pb-24">{children}</main>
+              <Footer />
+            </div>
+          </div>
         </ThemeProvider>
       </body>
     </html>
