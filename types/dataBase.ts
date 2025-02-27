@@ -6,4 +6,5 @@ export interface ConnectionConfig {
   username: string;
   password: string;
   database: string;
+  url?: string;
 }

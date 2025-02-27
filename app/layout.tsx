@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import Sidebar from "@/components/sidebar";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
+import { Toaster } from "sonner";
 
 export const metadata = {
   title: "AI DB Search",
@@ -30,6 +31,7 @@ export default function RootLayout({
               <Footer />
             </div>
           </div>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

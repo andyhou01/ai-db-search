@@ -15,6 +15,26 @@ import { ConnectionConfig } from "@/types/dataBase";
 import DBDialog from "./_components/connection-dialog";
 import DeleteDialog from "./_components/delete-dialog";
 
+function maskConnectionUrl(url: string) {
+  try {
+    const urlObj = new URL(url);
+    // Mask password if present
+    if (urlObj.password) {
+      const credentials = "****";
+      // Reconstruct the URL with masked credentials
+      return `${urlObj.protocol}//${urlObj.username}:${credentials}@${urlObj.host}${urlObj.pathname}${urlObj.search}`;
+    }
+    return url;
+  } catch (e) {
+    // If URL parsing fails, do basic masking
+    const parts = url.split("@");
+    if (parts.length > 1) {
+      return `${parts[0].split("://")[0]}://*****@${parts[1]}`;
+    }
+    return url;
+  }
+}
+
 export default function ConnectionPage() {
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -121,14 +141,41 @@ export default function ConnectionPage() {
             <CardHeader>
               <CardTitle>{conn.name}</CardTitle>
               <CardDescription>
-                {conn.type} - {conn.host}
+                {conn.type} -{" "}
+                {conn.url ? "URL Connection" : "Parameter Connection"}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-1 text-sm">
-                <p>Database: {conn.database}</p>
-                <p>Port: {conn.port}</p>
-                <p>Username: {conn.username}</p>
+                {conn.url ? (
+                  <div className="space-y-1">
+                    <p className="font-medium">Connection URL:</p>
+                    <p className="p-2 font-mono text-xs break-all rounded bg-muted">
+                      {maskConnectionUrl(conn.url)}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-x-4">
+                      <div>
+                        <p className="font-medium">Host:</p>
+                        <p className="text-muted-foreground">{conn.host}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">Port:</p>
+                        <p className="text-muted-foreground">{conn.port}</p>
+                      </div>
+                    </div>
+                    <div className="pt-2">
+                      <p className="font-medium">Database:</p>
+                      <p className="text-muted-foreground">{conn.database}</p>
+                    </div>
+                    <div className="pt-2">
+                      <p className="font-medium">Username:</p>
+                      <p className="text-muted-foreground">{conn.username}</p>
+                    </div>
+                  </>
+                )}
               </div>
             </CardContent>
             <CardFooter className="flex justify-between">

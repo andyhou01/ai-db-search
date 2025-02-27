@@ -16,9 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { Plus, Loader2 } from "lucide-react";
 import { ConnectionConfig } from "@/types/dataBase";
 import { useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 interface ConnectionDialogProps {
   isOpen: boolean;
@@ -48,18 +50,34 @@ const ConnectionDialog = ({
   const [errors, setErrors] = useState<
     Partial<Record<keyof ConnectionConfig, boolean>>
   >({});
+  const [connectionMode, setConnectionMode] = useState<"params" | "url">(
+    "params"
+  );
+  const [isLoading, setIsLoading] = useState(false);
 
   const validateForm = () => {
     const newErrors: Partial<Record<keyof ConnectionConfig, boolean>> = {};
     let isValid = true;
 
-    // Check each field
-    Object.entries(newConnection).forEach(([key, value]) => {
-      if (!value.trim()) {
-        newErrors[key as keyof ConnectionConfig] = true;
+    if (connectionMode === "params") {
+      // Check each parameter field
+      Object.entries(newConnection).forEach(([key, value]) => {
+        if (key !== "url" && !value.trim()) {
+          newErrors[key as keyof ConnectionConfig] = true;
+          isValid = false;
+        }
+      });
+    } else {
+      // Check URL and name fields only
+      if (!newConnection.name.trim()) {
+        newErrors.name = true;
         isValid = false;
       }
-    });
+      if (!newConnection.url?.trim()) {
+        newErrors.url = true;
+        isValid = false;
+      }
+    }
 
     setErrors(newErrors);
     return isValid;
@@ -67,9 +85,18 @@ const ConnectionDialog = ({
 
   const handleSubmit = () => {
     if (validateForm()) {
-      // Use placeholder values if host or port are empty
       const connectionToSave = {
         ...newConnection,
+        // Clear unused fields based on mode
+        ...(connectionMode === "url"
+          ? {
+              host: "",
+              port: "",
+              username: "",
+              password: "",
+              database: "",
+            }
+          : { url: "" }),
       };
 
       if (isEditing) {
@@ -77,6 +104,60 @@ const ConnectionDialog = ({
       } else {
         handleSave(connectionToSave);
       }
+    }
+  };
+
+  const testConnection = async () => {
+    if (!validateForm()) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/test-connection", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...newConnection,
+          // Clear unused fields based on mode
+          ...(connectionMode === "url"
+            ? {
+                host: "",
+                port: "",
+                username: "",
+                password: "",
+                database: "",
+              }
+            : { url: "" }),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Connection failed");
+      }
+
+      toast.success("Connection successful!", {
+        className: "bg-green-500 text-white border-0",
+      });
+    } catch (error) {
+      toast.error("Failed to connect to database!", {
+        className: "bg-red-500 text-white border-0",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getUrlPlaceholder = (type: string) => {
+    switch (type) {
+      case "mysql":
+        return "mysql://user:password@host:port/database";
+      case "postgresql":
+        return "postgresql://user:password@host:port/database";
+      case "mongodb":
+        return "mongodb://user:password@host:port/database";
+      default:
+        return "database://user:password@host:port/database";
     }
   };
 
@@ -96,7 +177,10 @@ const ConnectionDialog = ({
             username: "",
             password: "",
             database: "",
+            url: "",
           });
+          setErrors({});
+          setConnectionMode("params");
         }
       }}
     >
@@ -115,7 +199,9 @@ const ConnectionDialog = ({
             Configure your database connection settings
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-4 py-4">
+
+        <div className="space-y-4">
+          {/* Common fields */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="name">
@@ -135,6 +221,7 @@ const ConnectionDialog = ({
               className={errors.name ? "border-destructive" : ""}
             />
           </div>
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="type">
@@ -162,114 +249,176 @@ const ConnectionDialog = ({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="host">
-                Host <span className="text-primary">*</span>
-              </Label>
-              {errors.host && (
-                <span className="text-xs text-destructive">Required</span>
-              )}
-            </div>
-            <Input
-              id="host"
-              value={newConnection.host}
-              onChange={(e) =>
-                setNewConnection({ ...newConnection, host: e.target.value })
-              }
-              className={errors.host ? "border-destructive" : ""}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="port">
-                Port <span className="text-primary">*</span>
-              </Label>
-              {errors.port && (
-                <span className="text-xs text-destructive">Required</span>
-              )}
-            </div>
-            <Input
-              id="port"
-              value={newConnection.port}
-              onChange={(e) =>
-                setNewConnection({ ...newConnection, port: e.target.value })
-              }
-              className={errors.port ? "border-destructive" : ""}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="username">
-                Username <span className="text-primary">*</span>
-              </Label>
-              {errors.username && (
-                <span className="text-xs text-destructive">Required</span>
-              )}
-            </div>
-            <Input
-              id="username"
-              value={newConnection.username}
-              onChange={(e) =>
-                setNewConnection({
-                  ...newConnection,
-                  username: e.target.value,
-                })
-              }
-              className={errors.username ? "border-destructive" : ""}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">
-                Password <span className="text-primary">*</span>
-              </Label>
-              {errors.password && (
-                <span className="text-xs text-destructive">Required</span>
-              )}
-            </div>
-            <Input
-              id="password"
-              type="password"
-              value={newConnection.password}
-              onChange={(e) =>
-                setNewConnection({
-                  ...newConnection,
-                  password: e.target.value,
-                })
-              }
-              className={errors.password ? "border-destructive" : ""}
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="database">
-                Database Name <span className="text-primary">*</span>
-              </Label>
-              {errors.database && (
-                <span className="text-xs text-destructive">Required</span>
-              )}
-            </div>
-            <Input
-              id="database"
-              value={newConnection.database}
-              onChange={(e) =>
-                setNewConnection({
-                  ...newConnection,
-                  database: e.target.value,
-                })
-              }
-              className={errors.database ? "border-destructive" : ""}
-            />
-          </div>
+
+          {/* Connection mode tabs */}
+          <Tabs
+            value={connectionMode}
+            onValueChange={(v) => setConnectionMode(v as "params" | "url")}
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="params">Parameters</TabsTrigger>
+              <TabsTrigger value="url">Connection URL</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="params" className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="host">
+                      Host <span className="text-primary">*</span>
+                    </Label>
+                    {errors.host && (
+                      <span className="text-xs text-destructive">Required</span>
+                    )}
+                  </div>
+                  <Input
+                    id="host"
+                    value={newConnection.host}
+                    onChange={(e) =>
+                      setNewConnection({
+                        ...newConnection,
+                        host: e.target.value,
+                      })
+                    }
+                    className={errors.host ? "border-destructive" : ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="port">
+                      Port <span className="text-primary">*</span>
+                    </Label>
+                    {errors.port && (
+                      <span className="text-xs text-destructive">Required</span>
+                    )}
+                  </div>
+                  <Input
+                    id="port"
+                    value={newConnection.port}
+                    onChange={(e) =>
+                      setNewConnection({
+                        ...newConnection,
+                        port: e.target.value,
+                      })
+                    }
+                    className={errors.port ? "border-destructive" : ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="username">
+                      Username <span className="text-primary">*</span>
+                    </Label>
+                    {errors.username && (
+                      <span className="text-xs text-destructive">Required</span>
+                    )}
+                  </div>
+                  <Input
+                    id="username"
+                    value={newConnection.username}
+                    onChange={(e) =>
+                      setNewConnection({
+                        ...newConnection,
+                        username: e.target.value,
+                      })
+                    }
+                    className={errors.username ? "border-destructive" : ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">
+                      Password <span className="text-primary">*</span>
+                    </Label>
+                    {errors.password && (
+                      <span className="text-xs text-destructive">Required</span>
+                    )}
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={newConnection.password}
+                    onChange={(e) =>
+                      setNewConnection({
+                        ...newConnection,
+                        password: e.target.value,
+                      })
+                    }
+                    className={errors.password ? "border-destructive" : ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="database">
+                      Database Name <span className="text-primary">*</span>
+                    </Label>
+                    {errors.database && (
+                      <span className="text-xs text-destructive">Required</span>
+                    )}
+                  </div>
+                  <Input
+                    id="database"
+                    value={newConnection.database}
+                    onChange={(e) =>
+                      setNewConnection({
+                        ...newConnection,
+                        database: e.target.value,
+                      })
+                    }
+                    className={errors.database ? "border-destructive" : ""}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="url" className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="url">
+                    Connection URL <span className="text-primary">*</span>
+                  </Label>
+                  {errors.url && (
+                    <span className="text-xs text-destructive">Required</span>
+                  )}
+                </div>
+                <Input
+                  id="url"
+                  value={newConnection.url}
+                  onChange={(e) =>
+                    setNewConnection({ ...newConnection, url: e.target.value })
+                  }
+                  placeholder={getUrlPlaceholder(newConnection.type)}
+                  className={errors.url ? "border-destructive" : ""}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
-        <div className="flex justify-end gap-4">
-          <Button variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+
+        <div className="flex justify-between gap-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={testConnection}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Testing...
+              </>
+            ) : (
+              "Test Connection"
+            )}
           </Button>
-          <Button onClick={handleSubmit}>
-            {isEditing ? "Update" : "Save"} Connection
-          </Button>
+          <div className="flex gap-4">
+            <Button variant="outline" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={isLoading}>
+              {isEditing ? "Update" : "Save"} Connection
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
