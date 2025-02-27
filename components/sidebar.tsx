@@ -46,8 +46,9 @@ export default function Sidebar() {
             <Link href={menu.path} key={index}>
               <div
                 key={index}
-                className={`flex gap-2 mb-2 p-3 hover:bg-secondary hover:text-primary rounded-lg cursor-pointer items-center ${
-                  path === menu.path && "bg-secondary text-primary"
+                className={`flex gap-2 mb-2 p-3 hover:bg-neutral-300 dark:hover:bg-neutral-700 hover:text-primary rounded-lg cursor-pointer items-center ${
+                  path === menu.path &&
+                  "bg-neutral-300 dark:bg-neutral-700 text-primary"
                 }`}
               >
                 <menu.icon className="w-6 h-6" />
