@@ -80,7 +80,7 @@ export default function Page() {
   };
 
   return (
-    <div className="flex items-start justify-center p-0 bg-neutral-50 dark:bg-neutral-900 sm:p-8">
+    <div className="flex items-start justify-center bg-neutral-50 dark:bg-neutral-900">
       <div className="flex flex-col w-full max-w-4xl min-h-dvh sm:min-h-0 ">
         <motion.div
           className="flex flex-col flex-grow bg-card rounded-xl sm:border sm:border-border"

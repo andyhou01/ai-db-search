@@ -142,8 +142,8 @@ const HistoryPage = () => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="mt-2 mb-8">
+    <div>
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Query History</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Explore and manage all your queries in one place
