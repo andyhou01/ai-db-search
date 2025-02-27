@@ -1,31 +1,60 @@
-import Link from "next/link";
+"use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import {
+  History,
+  Database,
+  BotMessageSquare,
+  LayoutDashboard,
+} from "lucide-react";
+import Logo from "./logo";
 export default function Sidebar() {
+  const menuList = [
+    {
+      name: "Chat with DB",
+      icon: BotMessageSquare,
+      path: "/",
+    },
+    {
+      name: "Query History",
+      icon: History,
+      path: "/history",
+    },
+    {
+      name: "DB Connection",
+      icon: Database,
+      path: "/connection",
+    },
+    {
+      name: "Dashboard",
+      icon: LayoutDashboard,
+      path: "/dashboard",
+    },
+  ];
+
+  const path = usePathname();
+  useEffect(() => {}, [path]);
+
   return (
     <div className="fixed top-0 left-0 w-64 h-screen border-r border-gray-200 bg-gray-50 dark:bg-neutral-950 dark:border-neutral-800">
-      <div className="p-4">
-        <h1 className="mb-8 text-xl font-bold text-black dark:text-white">
-          DB Assistant
-        </h1>
-        <nav>
-          <ul className="space-y-2">
-            <li>
-              <Link
-                href="/"
-                className="flex items-center p-3 text-black transition-colors rounded-lg dark:text-gray-200 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+      <div className="px-4 py-6">
+        <Logo />
+        <nav className="mt-12">
+          {menuList.map((menu, index) => (
+            <Link href={menu.path} key={index}>
+              <div
+                key={index}
+                className={`flex gap-2 mb-2 p-3 hover:bg-secondary hover:text-primary rounded-lg cursor-pointer items-center ${
+                  path === menu.path && "bg-secondary text-primary"
+                }`}
               >
-                <span>Chat with DB</span>
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/connections"
-                className="flex items-center p-3 text-black transition-colors rounded-lg dark:text-gray-200 hover:bg-neutral-200 dark:hover:bg-neutral-800"
-              >
-                <span>DB Connections</span>
-              </Link>
-            </li>
-          </ul>
+                <menu.icon className="w-6 h-6" />
+                <h2 className="text-md">{menu.name}</h2>
+              </div>
+            </Link>
+          ))}
         </nav>
       </div>
     </div>

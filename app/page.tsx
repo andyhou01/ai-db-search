@@ -89,7 +89,6 @@ export default function Page() {
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
           <div className="flex flex-col flex-grow p-6 sm:p-8">
-            {/* <Header handleClear={handleClear} /> */}
             <Search
               handleClear={handleClear}
               handleSubmit={handleSubmit}
@@ -123,7 +122,7 @@ export default function Page() {
                         />
                       )}
                       {loading ? (
-                        <div className="absolute flex flex-col items-center justify-center w-full h-full space-y-4 bg-background/50">
+                        <div className="flex flex-col items-center justify-center w-full h-full space-y-4 bg-background/50">
                           <Loader2 className="w-12 h-12 animate-spin text-muted-foreground" />
                           <p className="text-foreground">
                             {loadingStep === 1
