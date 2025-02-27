@@ -2,11 +2,18 @@
 
 import { Config, configSchema, explanationsSchema, Result } from "@/lib/types";
 import { openai } from "@ai-sdk/openai";
-import { sql } from "@vercel/postgres";
+import { createPool } from "@vercel/postgres";
 import { generateObject } from "ai";
 import { z } from "zod";
 
-export const generateQuery = async (input: string) => {
+// Helper function to get SQL client with connection URL
+const getSqlClient = (connectionUrl: string) => {
+  return createPool({
+    connectionString: connectionUrl,
+  });
+};
+
+export const generateQuery = async (input: string, connectionUrl: string) => {
   "use server";
   try {
     const result = await generateObject({
@@ -64,7 +71,10 @@ export const generateQuery = async (input: string) => {
   }
 };
 
-export const runGenerateSQLQuery = async (query: string) => {
+export const runGenerateSQLQuery = async (
+  query: string,
+  connectionUrl: string
+) => {
   "use server";
   // Check if the query is a SELECT statement
   if (
@@ -84,13 +94,13 @@ export const runGenerateSQLQuery = async (query: string) => {
 
   let data: any;
   try {
-    data = await sql.query(query);
+    const client = getSqlClient(connectionUrl);
+    data = await client.query(query);
   } catch (e: any) {
     if (e.message.includes('relation "unicorns" does not exist')) {
       console.log(
-        "Table does not exist, creating and seeding it with dummy data now...",
+        "Table does not exist, creating and seeding it with dummy data now..."
       );
-      // throw error
       throw Error("Table does not exist");
     } else {
       throw e;
@@ -141,7 +151,7 @@ export const explainQuery = async (input: string, sqlQuery: string) => {
 
 export const generateChartConfig = async (
   results: Result[],
-  userQuery: string,
+  userQuery: string
 ) => {
   "use server";
   const system = `You are a data visualization expert. `;

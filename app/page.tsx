@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   generateChartConfig,
@@ -14,6 +14,13 @@ import { Results } from "@/components/results";
 import { SuggestedQueries } from "@/components/suggested-queries";
 import { QueryViewer } from "@/components/query-viewer";
 import { Search } from "@/components/search";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Page() {
   const [inputValue, setInputValue] = useState("");
@@ -24,10 +31,30 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(1);
   const [chartConfig, setChartConfig] = useState<Config | null>(null);
+  const [connections, setConnections] = useState<
+    Array<{ name: string; url: string }>
+  >([]);
+  const [selectedConnection, setSelectedConnection] = useState<string>("");
+
+  useEffect(() => {
+    const savedConnections = localStorage.getItem("dbConnections");
+    if (savedConnections) {
+      const parsed = JSON.parse(savedConnections);
+      setConnections(parsed);
+      // Set first connection as default if available
+      if (parsed.length > 0) {
+        setSelectedConnection(parsed[0].url);
+      }
+    }
+  }, []);
 
   const handleSubmit = async (suggestion?: string) => {
     const question = suggestion ?? inputValue;
     if (inputValue.length === 0 && !suggestion) return;
+    if (!selectedConnection) {
+      toast.error("Please select a database connection first");
+      return;
+    }
     clearExistingData();
     if (question.trim()) {
       setSubmitted(true);
@@ -36,7 +63,7 @@ export default function Page() {
     setLoadingStep(1);
     setActiveQuery("");
     try {
-      const query = await generateQuery(question);
+      const query = await generateQuery(question, selectedConnection);
       if (query === undefined) {
         toast.error("An error occurred. Please try again.");
         setLoading(false);
@@ -44,7 +71,7 @@ export default function Page() {
       }
       setActiveQuery(query);
       setLoadingStep(2);
-      const companies = await runGenerateSQLQuery(query);
+      const companies = await runGenerateSQLQuery(query, selectedConnection);
       const columns = companies.length > 0 ? Object.keys(companies[0]) : [];
       setResults(companies);
       setColumns(columns);
@@ -89,6 +116,23 @@ export default function Page() {
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
           <div className="flex flex-col flex-grow p-6 sm:p-8">
+            <div className="mb-4">
+              <Select
+                value={selectedConnection}
+                onValueChange={setSelectedConnection}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a database connection" />
+                </SelectTrigger>
+                <SelectContent>
+                  {connections.map((conn) => (
+                    <SelectItem key={conn.url} value={conn.url}>
+                      {conn.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Search
               handleClear={handleClear}
               handleSubmit={handleSubmit}
