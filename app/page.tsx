@@ -6,7 +6,7 @@ import {
   generateChartConfig,
   generateQuery,
   runGenerateSQLQuery,
-} from "./actions";
+} from "@/actions/dbQuery";
 import { Config, Result } from "@/lib/types";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";

@@ -50,9 +50,7 @@ const ConnectionDialog = ({
   const [errors, setErrors] = useState<
     Partial<Record<keyof ConnectionConfig, boolean>>
   >({});
-  const [connectionMode, setConnectionMode] = useState<"params" | "url">(
-    "params"
-  );
+  const [connectionMode, setConnectionMode] = useState<"url" | "params">("url");
   const [isLoading, setIsLoading] = useState(false);
 
   const validateForm = () => {
@@ -253,11 +251,11 @@ const ConnectionDialog = ({
           {/* Connection mode tabs */}
           <Tabs
             value={connectionMode}
-            onValueChange={(v) => setConnectionMode(v as "params" | "url")}
+            onValueChange={(v) => setConnectionMode(v as "url" | "params")}
           >
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="params">Parameters</TabsTrigger>
               <TabsTrigger value="url">Connection URL</TabsTrigger>
+              <TabsTrigger value="params">Parameters</TabsTrigger>
             </TabsList>
 
             <TabsContent value="params" className="space-y-4">
