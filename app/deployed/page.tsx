@@ -5,7 +5,7 @@ import { ArrowUpDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const HistoryPage = () => {
+const DeployedPage = () => {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -167,4 +167,4 @@ const HistoryPage = () => {
     </div>
   );
 };
-export default HistoryPage;
+export default DeployedPage;
