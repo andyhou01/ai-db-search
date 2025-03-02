@@ -11,7 +11,7 @@ export interface ChatHistoryItem {
 }
 
 // Maximum number of chat history items to store
-const MAX_HISTORY_ITEMS = 10;
+const MAX_HISTORY_ITEMS = 20;
 
 // Save a new chat history item to localStorage
 export const saveChatHistory = (

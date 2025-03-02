@@ -23,6 +23,8 @@ import {
   Database,
   Copy,
   Check,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -73,7 +75,7 @@ import {
 type SortField = "query" | "timestamp" | "results" | "connection";
 type SortOrder = "asc" | "desc";
 
-const DeployedPage = () => {
+const HistoryPage = () => {
   const [history, setHistory] = useState<ChatHistoryItem[]>([]);
   const [filteredHistory, setFilteredHistory] = useState<ChatHistoryItem[]>([]);
   const [selectedHistoryItem, setSelectedHistoryItem] =
@@ -93,6 +95,8 @@ const DeployedPage = () => {
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [copiedQuery, setCopiedQuery] = useState(false);
   const [copiedSQL, setCopiedSQL] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   useEffect(() => {
     // Load chat history when component mounts
@@ -150,7 +154,37 @@ const DeployedPage = () => {
     });
 
     setFilteredHistory(filtered);
+    setCurrentPage(1);
   }, [history, searchQuery, sortField, sortOrder, connectionFilter]);
+
+  // Calculate pagination values
+  const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
+  const paginatedHistory = filteredHistory.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Pagination navigation functions
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const changeItemsPerPage = (value: number) => {
+    setItemsPerPage(value);
+    setCurrentPage(1);
+  };
 
   const handleClearHistory = () => {
     clearChatHistory();
@@ -430,7 +464,7 @@ const DeployedPage = () => {
           <div className="p-0 pt-4">
             <ScrollArea className="h-[calc(100vh-280px)] rounded-md">
               <Table>
-                <TableHeader className="top-0 bg-card z-10">
+                <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-[35%]">Query</TableHead>
                     <TableHead className="w-[15%]">Time</TableHead>
@@ -463,7 +497,7 @@ const DeployedPage = () => {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredHistory.map((item) => (
+                    paginatedHistory.map((item) => (
                       <TableRow
                         key={item.id}
                         className="group cursor-pointer hover:bg-muted/50"
@@ -589,6 +623,157 @@ const DeployedPage = () => {
                 </TableBody>
               </Table>
             </ScrollArea>
+
+            {/* Add pagination controls */}
+            {filteredHistory.length > 0 && (
+              <div className="flex items-center justify-between space-x-2 py-4">
+                <div className="flex items-center space-x-2">
+                  <p className="text-sm text-muted-foreground">
+                    Showing{" "}
+                    <span className="font-medium">
+                      {(currentPage - 1) * itemsPerPage + 1}
+                    </span>
+                    -
+                    <span className="font-medium">
+                      {Math.min(
+                        currentPage * itemsPerPage,
+                        filteredHistory.length
+                      )}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-medium">
+                      {filteredHistory.length}
+                    </span>{" "}
+                    items
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8">
+                        {itemsPerPage} per page
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {[5, 10, 20, 50, 100].map((value) => (
+                        <DropdownMenuItem
+                          key={value}
+                          onClick={() => changeItemsPerPage(value)}
+                          className={itemsPerPage === value ? "bg-muted" : ""}
+                        >
+                          {value} per page
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToPreviousPage}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0"
+                  >
+                    <span className="sr-only">Go to previous page</span>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    {totalPages <= 7 ? (
+                      // Show all page numbers if 7 or fewer
+                      Array.from({ length: totalPages }, (_, i) => (
+                        <Button
+                          key={i + 1}
+                          variant={
+                            currentPage === i + 1 ? "default" : "outline"
+                          }
+                          size="sm"
+                          onClick={() => goToPage(i + 1)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {i + 1}
+                        </Button>
+                      ))
+                    ) : (
+                      // Show limited page numbers with ellipsis for many pages
+                      <>
+                        <Button
+                          variant={currentPage === 1 ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => goToPage(1)}
+                          className="h-8 w-8 p-0"
+                        >
+                          1
+                        </Button>
+
+                        {currentPage > 3 && (
+                          <span className="mx-1 text-muted-foreground">
+                            ...
+                          </span>
+                        )}
+
+                        {currentPage > 2 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => goToPage(currentPage - 1)}
+                            className="h-8 w-8 p-0"
+                          >
+                            {currentPage - 1}
+                          </Button>
+                        )}
+
+                        {currentPage !== 1 && currentPage !== totalPages && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                          >
+                            {currentPage}
+                          </Button>
+                        )}
+
+                        {currentPage < totalPages - 1 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => goToPage(currentPage + 1)}
+                            className="h-8 w-8 p-0"
+                          >
+                            {currentPage + 1}
+                          </Button>
+                        )}
+
+                        {currentPage < totalPages - 2 && (
+                          <span className="mx-1 text-muted-foreground">
+                            ...
+                          </span>
+                        )}
+
+                        <Button
+                          variant={
+                            currentPage === totalPages ? "default" : "outline"
+                          }
+                          size="sm"
+                          onClick={() => goToPage(totalPages)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {totalPages}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0"
+                  >
+                    <span className="sr-only">Go to next page</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -747,4 +932,4 @@ const DeployedPage = () => {
   );
 };
 
-export default DeployedPage;
+export default HistoryPage;
