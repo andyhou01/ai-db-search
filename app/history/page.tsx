@@ -21,6 +21,8 @@ import {
   X,
   Loader2,
   Database,
+  Copy,
+  Check,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -89,6 +91,8 @@ const DeployedPage = () => {
   );
   const [chartConfig, setChartConfig] = useState<any>(null);
   const [isChartLoading, setIsChartLoading] = useState(false);
+  const [copiedQuery, setCopiedQuery] = useState(false);
+  const [copiedSQL, setCopiedSQL] = useState(false);
 
   useEffect(() => {
     // Load chat history when component mounts
@@ -273,6 +277,18 @@ const DeployedPage = () => {
     } finally {
       setIsChartLoading(false);
     }
+  };
+
+  const handleCopyQuery = () => {
+    navigator.clipboard.writeText(selectedHistoryItem?.query || "");
+    setCopiedQuery(true);
+    setTimeout(() => setCopiedQuery(false), 2000);
+  };
+
+  const handleCopySQL = () => {
+    navigator.clipboard.writeText(selectedHistoryItem?.sqlQuery || "");
+    setCopiedSQL(true);
+    setTimeout(() => setCopiedSQL(false), 2000);
   };
 
   return (
@@ -658,15 +674,65 @@ const DeployedPage = () => {
             {selectedHistoryItem && (
               <>
                 <div className="mb-4">
-                  <h3 className="text-sm font-medium mb-2">
-                    Natural Language Query
-                  </h3>
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium">
+                      Natural Language Query
+                    </h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={handleCopyQuery}
+                    >
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              {copiedQuery ? (
+                                <Check className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {copiedQuery ? "Copied!" : "Copy Query"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Button>
+                  </div>
                   <div className="p-3 rounded-md bg-muted text-sm">
                     {selectedHistoryItem.query}
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-sm font-medium mb-2">Generated SQL</h3>
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-medium">Generated SQL</h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={handleCopySQL}
+                    >
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              {copiedSQL ? (
+                                <Check className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {copiedSQL ? "Copied!" : "Copy SQL"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Button>
+                  </div>
                   <QueryViewer
                     activeQuery={selectedHistoryItem.sqlQuery}
                     inputValue=""
