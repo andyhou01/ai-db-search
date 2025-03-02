@@ -24,6 +24,7 @@ import {
   SortDesc,
   Filter,
   X,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -62,6 +63,7 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { generateChartConfig } from "@/actions/dbQuery";
 
 type SortField = "query" | "timestamp" | "results" | "connection";
 type SortOrder = "asc" | "desc";
@@ -82,6 +84,8 @@ const DeployedPage = () => {
   const [availableConnections, setAvailableConnections] = useState<string[]>(
     []
   );
+  const [chartConfig, setChartConfig] = useState<any>(null);
+  const [isChartLoading, setIsChartLoading] = useState(false);
 
   useEffect(() => {
     // Load chat history when component mounts
@@ -151,6 +155,7 @@ const DeployedPage = () => {
   const handleSelectHistoryItem = (item: ChatHistoryItem) => {
     setSelectedHistoryItem(item);
     setIsDialogOpen(true);
+    generateChart(item);
   };
 
   const handleViewSQLQuery = (item: ChatHistoryItem, e: React.MouseEvent) => {
@@ -250,6 +255,21 @@ const DeployedPage = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Function to generate chart config when viewing results
+  const generateChart = async (item: ChatHistoryItem) => {
+    if (!item || item.results.length === 0) return;
+
+    setIsChartLoading(true);
+    try {
+      const generation = await generateChartConfig(item.results, item.query);
+      setChartConfig(generation.config);
+    } catch (error) {
+      console.error("Failed to generate chart:", error);
+    } finally {
+      setIsChartLoading(false);
+    }
   };
 
   return (
@@ -499,8 +519,16 @@ const DeployedPage = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Results Dialog - Simplified to show only results */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      {/* Results Dialog - With chart support */}
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) {
+            setChartConfig(null); // Clear chart config when closing dialog
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>{selectedHistoryItem?.query}</DialogTitle>
@@ -517,6 +545,12 @@ const DeployedPage = () => {
                   </Badge>
                 </>
               )}
+              {isChartLoading && (
+                <span className="text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Generating chart...
+                </span>
+              )}
             </CardDescription>
           </DialogHeader>
           <div className="mt-4">
@@ -524,7 +558,7 @@ const DeployedPage = () => {
               <Results
                 results={selectedHistoryItem.results}
                 columns={selectedHistoryItem.columns}
-                chartConfig={null}
+                chartConfig={chartConfig}
               />
             )}
           </div>
