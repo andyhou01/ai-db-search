@@ -47,7 +47,7 @@ export default function Sidebar() {
   return (
     <div className="fixed top-0 left-0 flex flex-col w-64 h-screen border-r border-gray-200 shadow-sm bg-gray-50 dark:bg-neutral-950 dark:border-neutral-800">
       <div className="flex-1 px-6 py-8">
-        <div className="flex items-center">
+        <div className="flex items-center justify-center">
           <Logo />
         </div>
         <nav className="mt-10 space-y-1.5">
