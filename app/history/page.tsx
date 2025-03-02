@@ -656,10 +656,23 @@ const DeployedPage = () => {
           </DialogHeader>
           <div className="mt-4">
             {selectedHistoryItem && (
-              <QueryViewer
-                activeQuery={selectedHistoryItem.sqlQuery}
-                inputValue=""
-              />
+              <>
+                <div className="mb-4">
+                  <h3 className="text-sm font-medium mb-2">
+                    Natural Language Query
+                  </h3>
+                  <div className="p-3 rounded-md bg-muted text-sm">
+                    {selectedHistoryItem.query}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Generated SQL</h3>
+                  <QueryViewer
+                    activeQuery={selectedHistoryItem.sqlQuery}
+                    inputValue=""
+                  />
+                </div>
+              </>
             )}
           </div>
         </DialogContent>
