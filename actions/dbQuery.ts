@@ -13,52 +13,101 @@ const getSqlClient = (connectionUrl: string) => {
   });
 };
 
-export const generateQuery = async (input: string, connectionUrl: string) => {
+// New function to get database schema
+export const getDatabaseSchema = async (connectionUrl: string) => {
   "use server";
   try {
+    const client = getSqlClient(connectionUrl);
+
+    // Query to get table information
+    const tableQuery = `
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `;
+    const tables = await client.query(tableQuery);
+
+    let schema = "";
+
+    // For each table, get column information
+    for (const table of tables.rows) {
+      const tableName = table.table_name;
+
+      const columnQuery = `
+        SELECT column_name, data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = $1
+        ORDER BY ordinal_position
+      `;
+
+      const columns = await client.query(columnQuery, [tableName]);
+
+      schema += `${tableName} (\n`;
+      columns.rows.forEach((column, index) => {
+        schema += `  ${column.column_name} ${column.data_type.toUpperCase()}`;
+        if (column.is_nullable === "NO") schema += " NOT NULL";
+        if (column.column_default)
+          schema += ` DEFAULT ${column.column_default}`;
+        if (index < columns.rows.length - 1) schema += ",";
+        schema += "\n";
+      });
+      schema += ");\n\n";
+    }
+
+    return schema;
+  } catch (e) {
+    console.error("Error fetching database schema:", e);
+    return null;
+  }
+};
+
+export const generateQuery = async (
+  input: string,
+  connectionUrl: string,
+  existingSchema?: string
+) => {
+  "use server";
+  try {
+    // Use existing schema if provided, otherwise fetch it
+    const dbSchema = existingSchema || (await getDatabaseSchema(connectionUrl));
+
+    // Use schema if available
+    const schemaToUse = dbSchema;
+
     const result = await generateObject({
       model: openai("gpt-4o"),
       system: `You are a SQL (postgres) and data visualization expert. Your job is to help the user write a SQL query to retrieve the data they need. The table schema is as follows:
 
-      unicorns (
-      id SERIAL PRIMARY KEY,
-      company VARCHAR(255) NOT NULL UNIQUE,
-      valuation DECIMAL(10, 2) NOT NULL,
-      date_joined DATE,
-      country VARCHAR(255) NOT NULL,
-      city VARCHAR(255) NOT NULL,
-      industry VARCHAR(255) NOT NULL,
-      select_investors TEXT NOT NULL
-    );
+      ${schemaToUse}
 
-    Only retrieval queries are allowed.
+      Only retrieval queries are allowed.
 
-    For things like industry, company names and other string fields, use the ILIKE operator and convert both the search term and the field to lowercase using LOWER() function. For example: LOWER(industry) ILIKE LOWER('%search_term%').
+      For things like industry, company names and other string fields, use the ILIKE operator and convert both the search term and the field to lowercase using LOWER() function. For example: LOWER(industry) ILIKE LOWER('%search_term%').
 
-    Note: select_investors is a comma-separated list of investors. Trim whitespace to ensure you're grouping properly. Note, some fields may be null or have only one value.
-    When answering questions about a specific field, ensure you are selecting the identifying column (ie. what is Vercel's valuation would select company and valuation').
+      Note: select_investors is a comma-separated list of investors. Trim whitespace to ensure you're grouping properly. Note, some fields may be null or have only one value.
+      When answering questions about a specific field, ensure you are selecting the identifying column (ie. what is Vercel's valuation would select company and valuation').
 
-    The industries available are:
-    - healthcare & life sciences
-    - consumer & retail
-    - financial services
-    - enterprise tech
-    - insurance
-    - media & entertainment
-    - industrials
-    - health
+      The industries available are:
+      - healthcare & life sciences
+      - consumer & retail
+      - financial services
+      - enterprise tech
+      - insurance
+      - media & entertainment
+      - industrials
+      - health
 
-    If the user asks for a category that is not in the list, infer based on the list above.
+      If the user asks for a category that is not in the list, infer based on the list above.
 
-    Note: valuation is in billions of dollars so 10b would be 10.0.
-    Note: if the user asks for a rate, return it as a decimal. For example, 0.1 would be 10%.
+      Note: valuation is in billions of dollars so 10b would be 10.0.
+      Note: if the user asks for a rate, return it as a decimal. For example, 0.1 would be 10%.
 
-    If the user asks for 'over time' data, return by year.
+      If the user asks for 'over time' data, return by year.
 
-    When searching for UK or USA, write out United Kingdom or United States respectively.
+      When searching for UK or USA, write out United Kingdom or United States respectively.
 
-    EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single column, return the column and the count of the column. If the user asks for a rate, return the rate as a decimal. For example, 0.1 would be 10%.
-    `,
+      EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single column, return the column and the count of the column. If the user asks for a rate, return the rate as a decimal. For example, 0.1 would be 10%.
+      `,
       prompt: `Generate the query necessary to retrieve the data the user wants: ${input}`,
       schema: z.object({
         query: z.string(),
@@ -110,25 +159,27 @@ export const runGenerateSQLQuery = async (
   return data.rows as Result[];
 };
 
-export const explainQuery = async (input: string, sqlQuery: string) => {
+export const explainQuery = async (
+  input: string,
+  sqlQuery: string,
+  connectionUrl: string,
+  existingSchema?: string
+) => {
   "use server";
   try {
+    // Use existing schema if provided, otherwise fetch it
+    const dbSchema = existingSchema || (await getDatabaseSchema(connectionUrl));
+
+    // Use schema if available
+    const schemaToUse = dbSchema;
+
     const result = await generateObject({
       model: openai("gpt-4o"),
       schema: z.object({
         explanations: explanationsSchema,
       }),
       system: `You are a SQL (postgres) expert. Your job is to explain to the user write a SQL query you wrote to retrieve the data they asked for. The table schema is as follows:
-    unicorns (
-      id SERIAL PRIMARY KEY,
-      company VARCHAR(255) NOT NULL UNIQUE,
-      valuation DECIMAL(10, 2) NOT NULL,
-      date_joined DATE,
-      country VARCHAR(255) NOT NULL,
-      city VARCHAR(255) NOT NULL,
-      industry VARCHAR(255) NOT NULL,
-      select_investors TEXT NOT NULL
-    );
+    ${schemaToUse}
 
     When you explain you must take a section of the query, and then explain it. Each "section" should be unique. So in a query like: "SELECT * FROM unicorns limit 20", the sections could be "SELECT *", "FROM UNICORNS", "LIMIT 20".
     If a section doesnt have any explanation, include it, but leave the explanation empty.

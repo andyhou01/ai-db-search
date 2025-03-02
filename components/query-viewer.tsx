@@ -79,7 +79,7 @@ export const QueryViewer = ({
           )}
         </div>
       </div>
-      {!queryExpanded && (
+      {/* {!queryExpanded && (
         <Button
           variant="secondary"
           size="sm"
@@ -88,7 +88,7 @@ export const QueryViewer = ({
         >
           Show full query
         </Button>
-      )}
+      )} */}
     </div>
   );
 };

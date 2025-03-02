@@ -7,4 +7,5 @@ export interface ConnectionConfig {
   password: string;
   database: string;
   url?: string;
+  schema?: string;
 }

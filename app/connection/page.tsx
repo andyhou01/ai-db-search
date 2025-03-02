@@ -35,6 +35,37 @@ function maskConnectionUrl(url: string) {
   }
 }
 
+// Add these helper functions before the component
+const countColumns = (schema: string): number => {
+  // More accurate column counting
+  let columnCount = 0;
+
+  // Split by table definitions
+  const tables = schema.split(");");
+
+  // For each table (except the last empty one after the final semicolon)
+  for (let i = 0; i < tables.length - 1; i++) {
+    const tableContent = tables[i];
+
+    // Find the opening parenthesis that starts the column definitions
+    const openParenIndex = tableContent.indexOf("(");
+    if (openParenIndex !== -1) {
+      // Get the content between parentheses
+      const columnsSection = tableContent.substring(openParenIndex + 1);
+
+      // Split by commas and count non-empty lines that aren't just whitespace
+      const columns = columnsSection
+        .split(",")
+        .map((col) => col.trim())
+        .filter((col) => col.length > 0);
+
+      columnCount += columns.length;
+    }
+  }
+
+  return columnCount;
+};
+
 export default function ConnectionPage() {
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -42,7 +73,7 @@ export default function ConnectionPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [newConnection, setNewConnection] = useState<ConnectionConfig>({
     name: "",
-    type: "mysql",
+    type: "postgresql",
     host: "",
     port: "",
     username: "",
@@ -140,42 +171,32 @@ export default function ConnectionPage() {
           <Card key={index} className="transition-shadow hover:shadow-lg">
             <CardHeader>
               <CardTitle>{conn.name}</CardTitle>
-              <CardDescription>
-                {conn.type} -{" "}
-                {conn.url ? "URL Connection" : "Parameter Connection"}
-              </CardDescription>
+              <CardDescription>{conn.type} Database</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-1 text-sm">
-                {conn.url ? (
-                  <div className="space-y-1">
-                    <p className="font-medium">Connection URL:</p>
-                    <p className="p-2 font-mono text-xs break-all rounded bg-muted">
-                      {maskConnectionUrl(conn.url)}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 gap-x-4">
-                      <div>
-                        <p className="font-medium">Host:</p>
-                        <p className="text-muted-foreground">{conn.host}</p>
+                <div className="space-y-1">
+                  <p className="font-medium">Connection URL:</p>
+                  <p className="p-2 font-mono text-xs break-all rounded bg-muted">
+                    {maskConnectionUrl(conn.url || "")}
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <p className="font-medium">Schema:</p>
+                  {conn.schema ? (
+                    <div className="mt-1">
+                      <div className="p-2 font-mono text-xs rounded bg-muted max-h-32 overflow-y-auto">
+                        <pre>{conn.schema.substring(0, 200)}...</pre>
                       </div>
-                      <div>
-                        <p className="font-medium">Port:</p>
-                        <p className="text-muted-foreground">{conn.port}</p>
-                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Schema available {countColumns(conn.schema)} columns
+                      </p>
                     </div>
-                    <div className="pt-2">
-                      <p className="font-medium">Database:</p>
-                      <p className="text-muted-foreground">{conn.database}</p>
-                    </div>
-                    <div className="pt-2">
-                      <p className="font-medium">Username:</p>
-                      <p className="text-muted-foreground">{conn.username}</p>
-                    </div>
-                  </>
-                )}
+                  ) : (
+                    <p className="text-muted-foreground">Not available</p>
+                  )}
+                </div>
               </div>
             </CardContent>
             <CardFooter className="flex justify-between">
