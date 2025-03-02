@@ -113,10 +113,10 @@ export default function ConnectionPage() {
   };
 
   return (
-    <div>
+    <div className="pt-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold">Database Connections</h1>
+          <h1 className="text-xl font-semibold">Database Connections</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Manage your database connections here
           </p>

@@ -9,7 +9,7 @@ const Header = ({
   handleNewChat: () => void;
 }) => {
   return (
-    <div className="fixed z-20 w-full max-w-6xl px-4 pt-4 pb-2 top-0 bg-primary-foreground">
+    <div className="fixed z-20 w-full max-w-6xl px-4 pt-6 pb-2 top-0 bg-primary-foreground">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Chat with DB</h1>
         {messages.length > 0 && (
