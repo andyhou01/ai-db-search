@@ -8,13 +8,7 @@ import {
   deleteHistoryItem,
 } from "@/lib/chat-history";
 import { Results } from "@/components/results";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription } from "@/components/ui/card";
 import {
   Trash2,
   Eye,
@@ -316,11 +310,11 @@ const DeployedPage = () => {
           </CardContent>
         </Card>
       ) : (
-        <Card className="overflow-hidden px-6">
-          <CardHeader className="pb-0 space-y-4">
+        <div className="overflow-hidden">
+          <div className="pb-0 space-y-4">
             <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
               <div className="relative w-full sm:w-64">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
                   placeholder="Search queries..."
                   value={searchQuery}
@@ -331,7 +325,7 @@ const DeployedPage = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="absolute right-1 top-1 h-7 w-7 p-0"
+                    className="absolute right-1 top-1 h-7 w-7 p-0 rounded-full hover:bg-muted"
                     onClick={() => setSearchQuery("")}
                   >
                     <X className="h-4 w-4" />
@@ -415,12 +409,12 @@ const DeployedPage = () => {
                 </DropdownMenu>
               </div>
             </div>
-          </CardHeader>
+          </div>
 
-          <CardContent className="p-0 pt-4">
+          <div className="p-0 pt-4">
             <ScrollArea className="h-[calc(100vh-280px)] rounded-md">
               <Table>
-                <TableHeader className="sticky top-0 bg-card z-10">
+                <TableHeader className="top-0 bg-card z-10">
                   <TableRow>
                     <TableHead className="w-[35%]">Query</TableHead>
                     <TableHead className="w-[15%]">Time</TableHead>
@@ -460,16 +454,22 @@ const DeployedPage = () => {
                         onClick={() => handleSelectHistoryItem(item)}
                       >
                         <TableCell className="font-medium">
-                          <div className="flex flex-col">
-                            <span className="truncate max-w-xs">
-                              {item.query}
-                            </span>
-                            <span className="text-xs text-muted-foreground mt-1 hidden group-hover:block">
-                              {item.sqlQuery.length > 60
-                                ? `${item.sqlQuery.substring(0, 60)}...`
-                                : item.sqlQuery}
-                            </span>
-                          </div>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="truncate max-w-xs">
+                                  {item.query}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="bottom"
+                                align="start"
+                                className="max-w-md border-none bg-muted"
+                              >
+                                <p className="font-normal">{item.query}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TableCell>
                         <TableCell>
                           <span className="whitespace-nowrap">
@@ -573,8 +573,8 @@ const DeployedPage = () => {
                 </TableBody>
               </Table>
             </ScrollArea>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Delete confirmation dialog */}
