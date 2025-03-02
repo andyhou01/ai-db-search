@@ -13,6 +13,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import {
   Trash2,
@@ -25,6 +26,7 @@ import {
   Filter,
   X,
   Loader2,
+  Database,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -64,6 +66,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { generateChartConfig } from "@/actions/dbQuery";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type SortField = "query" | "timestamp" | "results" | "connection";
 type SortOrder = "asc" | "desc";
@@ -273,9 +282,12 @@ const DeployedPage = () => {
   };
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Query History</h1>
+    <div className="pt-6">
+      <div className="mb-8">
+        <h1 className="text-xl font-semibold">Query History</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          View your query history here
+        </p>
         {/* {history.length > 0 && (
           <Button
             variant="outline"
@@ -284,22 +296,28 @@ const DeployedPage = () => {
             className="flex items-center gap-1"
           >
             <Trash2 className="h-4 w-4 mr-1" />
-            Clear History
+            Clear All
           </Button>
         )} */}
       </div>
 
       {history.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground py-8">
-              No query history available. Run some queries to see them here.
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <div className="rounded-full bg-muted p-3 mb-4">
+              <Database className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="text-center text-muted-foreground mb-2">
+              No query history available
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              Run some queries to see them here
             </p>
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardHeader className="pb-0">
+        <Card className="overflow-hidden px-6">
+          <CardHeader className="pb-0 space-y-4">
             <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
               <div className="relative w-full sm:w-64">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -400,96 +418,161 @@ const DeployedPage = () => {
           </CardHeader>
 
           <CardContent className="p-0 pt-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[35%]">Query</TableHead>
-                  <TableHead className="w-[15%]">Time</TableHead>
-                  <TableHead className="w-[15%]">Connection</TableHead>
-                  <TableHead className="w-[15%]">Result Size</TableHead>
-                  <TableHead className="w-[20%] text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredHistory.length === 0 ? (
+            <ScrollArea className="h-[calc(100vh-280px)] rounded-md">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center py-8 text-muted-foreground"
-                    >
-                      No matching queries found
-                    </TableCell>
+                    <TableHead className="w-[35%]">Query</TableHead>
+                    <TableHead className="w-[15%]">Time</TableHead>
+                    <TableHead className="w-[15%]">Connection</TableHead>
+                    <TableHead className="w-[15%]">Result Size</TableHead>
+                    <TableHead className="w-[20%] text-right">
+                      Actions
+                    </TableHead>
                   </TableRow>
-                ) : (
-                  filteredHistory.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleSelectHistoryItem(item)}
-                    >
-                      <TableCell className="font-medium truncate max-w-xs">
-                        {item.query}
-                      </TableCell>
-                      <TableCell>{formatTimestamp(item.timestamp)}</TableCell>
-                      <TableCell>
-                        {item.connection ? (
-                          <Badge variant="outline">{item.connection}</Badge>
-                        ) : (
-                          <span className="text-muted-foreground">Unknown</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{item.results.length} rows</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                </TableHeader>
+                <TableBody>
+                  {filteredHistory.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="text-center py-8 text-muted-foreground"
+                      >
+                        <div className="flex flex-col items-center justify-center py-6">
+                          <Search className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                          <p>No matching queries found</p>
                           <Button
-                            variant="outline"
+                            variant="link"
                             size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectHistoryItem(item);
-                            }}
-                            className="h-8 w-8 p-0"
-                            title="View Results"
+                            onClick={clearFilters}
+                            className="mt-2"
                           >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => handleViewSQLQuery(item, e)}
-                            className="h-8 w-8 p-0"
-                            title="View SQL Query"
-                          >
-                            <Code className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              downloadCSV(item);
-                            }}
-                            className="h-8 w-8 p-0"
-                            title="Download Results"
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => handleDeleteClick(item.id, e)}
-                            className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
+                            Clear filters
                           </Button>
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    filteredHistory.map((item) => (
+                      <TableRow
+                        key={item.id}
+                        className="group cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleSelectHistoryItem(item)}
+                      >
+                        <TableCell className="font-medium">
+                          <div className="flex flex-col">
+                            <span className="truncate max-w-xs">
+                              {item.query}
+                            </span>
+                            <span className="text-xs text-muted-foreground mt-1 hidden group-hover:block">
+                              {item.sqlQuery.length > 60
+                                ? `${item.sqlQuery.substring(0, 60)}...`
+                                : item.sqlQuery}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="whitespace-nowrap">
+                            {formatTimestamp(item.timestamp)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {item.connection ? (
+                            <Badge variant="outline" className="font-normal">
+                              {item.connection}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              Unknown
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="font-normal">
+                            {item.results.length} rows
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectHistoryItem(item);
+                                    }}
+                                    className="h-8 w-8 p-0 opacity-70 hover:opacity-100"
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>View Results</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => handleViewSQLQuery(item, e)}
+                                    className="h-8 w-8 p-0 opacity-70 hover:opacity-100"
+                                  >
+                                    <Code className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>View SQL Query</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      downloadCSV(item);
+                                    }}
+                                    className="h-8 w-8 p-0 opacity-70 hover:opacity-100"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Download CSV</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) =>
+                                      handleDeleteClick(item.id, e)
+                                    }
+                                    className="h-8 w-8 p-0 text-destructive opacity-70 hover:opacity-100 hover:bg-destructive/10"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Delete</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
           </CardContent>
         </Card>
       )}

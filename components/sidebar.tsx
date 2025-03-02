@@ -25,9 +25,9 @@ export default function Sidebar() {
       path: "/",
     },
     {
-      name: "Deployed Query",
+      name: "Query History",
       icon: History,
-      path: "/deployed",
+      path: "/history",
     },
     {
       name: "DB Connection",
