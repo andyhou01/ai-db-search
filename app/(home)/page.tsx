@@ -26,6 +26,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import Instruction from "./_components/instruction";
 import Footer from "./_components/footer";
+import Header from "./_components/header";
 
 // Define message types
 type MessageType = "user" | "system";
@@ -184,22 +185,7 @@ export default function Page() {
   return (
     <div className="flex flex-col items-center justify-center">
       {/* Header */}
-      <div className="fixed z-20 w-full max-w-6xl px-4 pt-4 pb-2 top-0 bg-primary-foreground">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Chat with DB</h1>
-          {messages.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNewChat}
-              className="gap-1"
-            >
-              <Plus className="w-4 h-4" />
-              New Chat
-            </Button>
-          )}
-        </div>
-      </div>
+      <Header messages={messages} handleNewChat={handleNewChat} />
 
       {/* Scrollable chat area */}
       <div className="flex flex-col w-full max-w-4xl h-[86vh] mt-16 overflow-y-auto">
