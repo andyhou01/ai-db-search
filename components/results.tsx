@@ -10,6 +10,9 @@ import {
   Table,
 } from "./ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { useState } from "react";
+import { Button } from "./ui/button";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 
 export const Results = ({
   results,
@@ -20,6 +23,16 @@ export const Results = ({
   columns: string[];
   chartConfig: Config | null;
 }) => {
+  // Add pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(results.length / itemsPerPage);
+
+  // Calculate the current page's data
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = results.slice(indexOfFirstItem, indexOfLastItem);
+
   const formatColumnTitle = (title: string) => {
     return title
       .split("_")
@@ -53,6 +66,56 @@ export const Results = ({
     return String(value);
   };
 
+  // Pagination controls
+  const goToNextPage = () => {
+    setCurrentPage((prev) => Math.min(prev + 1, totalPages));
+  };
+
+  const goToPrevPage = () => {
+    setCurrentPage((prev) => Math.max(prev - 1, 1));
+  };
+
+  // Function to download results as CSV
+  const downloadCSV = () => {
+    if (results.length === 0) return;
+
+    // Create CSV header row
+    const header = columns.join(",");
+
+    // Create CSV rows from data
+    const csvRows = results.map((company) => {
+      return columns
+        .map((column) => {
+          // Format the cell value for CSV
+          let value = company[column as keyof Unicorn];
+
+          // Handle special formatting for CSV
+          if (typeof value === "string" && value.includes(",")) {
+            // Escape commas in values by wrapping in quotes
+            return `"${value}"`;
+          }
+
+          // Use the same formatting as displayed in the table
+          return formatCellValue(column, value);
+        })
+        .join(",");
+    });
+
+    // Combine header and rows
+    const csvContent = [header, ...csvRows].join("\n");
+
+    // Create a blob and download link
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "results.csv");
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="flex-grow flex flex-col">
       <Tabs defaultValue="table" className="w-full flex-grow flex flex-col">
@@ -67,8 +130,20 @@ export const Results = ({
             Chart
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="table" className="flex-grow">
-          <div className="sm:min-h-[10px] relative">
+        <TabsContent value="table" className="flex-grow flex flex-col">
+          <div className="flex justify-end mb-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadCSV}
+              disabled={results.length === 0}
+              className="flex items-center gap-1"
+            >
+              <Download className="h-4 w-4" />
+              Download CSV
+            </Button>
+          </div>
+          <div className="sm:min-h-[10px] relative flex-grow">
             <Table className="min-w-full divide-y divide-border">
               <TableHeader className="bg-muted top-0 shadow-sm">
                 <TableRow>
@@ -83,7 +158,7 @@ export const Results = ({
                 </TableRow>
               </TableHeader>
               <TableBody className="bg-card divide-y divide-border">
-                {results.map((company, index) => (
+                {currentItems.map((company, index) => (
                   <TableRow key={index} className="hover:bg-muted">
                     {columns.map((column, cellIndex) => (
                       <TableCell
@@ -101,6 +176,37 @@ export const Results = ({
               </TableBody>
             </Table>
           </div>
+
+          {/* Pagination controls */}
+          {results.length > itemsPerPage && (
+            <div className="flex items-center justify-between pt-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {indexOfFirstItem + 1}-
+                {Math.min(indexOfLastItem, results.length)} of {results.length}{" "}
+                results
+              </div>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="charts" className="flex-grow overflow-auto">
           <div className="mt-4">

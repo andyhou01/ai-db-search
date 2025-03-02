@@ -239,7 +239,7 @@ export default function Page() {
                               </p>
                             </div>
                           ) : (
-                            <div className="w-full space-y-4 mb-6">
+                            <div className="w-full space-y-4">
                               <p>{message.content}</p>
 
                               {message.query && (
