@@ -71,6 +71,8 @@ export default function ConnectionPage() {
   const [isOpen, setIsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [showFullSchema, setShowFullSchema] = useState(false);
+
   const [newConnection, setNewConnection] = useState<ConnectionConfig>({
     name: "",
     type: "postgresql",
@@ -184,14 +186,24 @@ export default function ConnectionPage() {
 
                 <div className="pt-2">
                   <p className="font-medium">Schema:</p>
-                  {conn.schema ? (
+                  {conn.schemaString ? (
                     <div className="mt-1">
                       <div className="p-2 font-mono text-xs rounded bg-muted max-h-32 overflow-y-auto">
-                        <pre>{conn.schema.substring(0, 200)}...</pre>
+                        {conn.schemaString.length > 100 && !showFullSchema ? (
+                          <>
+                            <pre>{conn.schemaString.substring(0, 100)}</pre>
+                            <Button
+                              variant="link"
+                              className="text-xs text-muted-foreground"
+                              onClick={() => setShowFullSchema(true)}
+                            >
+                              ...view full schema
+                            </Button>
+                          </>
+                        ) : (
+                          <pre>{conn.schemaString}</pre>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Schema available {countColumns(conn.schema)} columns
-                      </p>
                     </div>
                   ) : (
                     <p className="text-muted-foreground">Not available</p>

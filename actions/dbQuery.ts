@@ -1,6 +1,7 @@
 "use server";
 
 import { Config, configSchema, explanationsSchema, Result } from "@/lib/types";
+import { DatabaseSchema } from "@/types/dataBase";
 import { openai } from "@ai-sdk/openai";
 import { createPool } from "@vercel/postgres";
 import { generateObject } from "ai";
@@ -27,7 +28,9 @@ export const getDatabaseSchema = async (connectionUrl: string) => {
     `;
     const tables = await client.query(tableQuery);
 
-    let schema = "";
+    let schema: DatabaseSchema = {
+      tables: [],
+    };
 
     // For each table, get column information
     for (const table of tables.rows) {
@@ -42,22 +45,26 @@ export const getDatabaseSchema = async (connectionUrl: string) => {
 
       const columns = await client.query(columnQuery, [tableName]);
 
-      schema += `${tableName} (\n`;
-      columns.rows.forEach((column, index) => {
-        schema += `  ${column.column_name} ${column.data_type.toUpperCase()}`;
-        if (column.is_nullable === "NO") schema += " NOT NULL";
-        if (column.column_default)
-          schema += ` DEFAULT ${column.column_default}`;
-        if (index < columns.rows.length - 1) schema += ",";
-        schema += "\n";
-      });
-      schema += ");\n\n";
-    }
+      const tableSchema: DatabaseSchema["tables"][0] = {
+        name: tableName,
+        columns: [],
+      };
 
+      columns.rows.forEach((column) => {
+        tableSchema.columns.push({
+          name: column.column_name,
+          type: column.data_type.toUpperCase(),
+          nullable: column.is_nullable === "NO",
+          default: column.column_default,
+        });
+      });
+
+      schema.tables.push(tableSchema);
+    }
     return schema;
   } catch (e) {
     console.error("Error fetching database schema:", e);
-    return null;
+    return undefined;
   }
 };
 

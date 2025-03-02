@@ -6,9 +6,10 @@ import {
   generateChartConfig,
   generateQuery,
   runGenerateSQLQuery,
+  getDatabaseSchema,
 } from "@/actions/dbQuery";
 import { Config, Result } from "@/lib/types";
-import { Loader2, Send, User, Database, Plus, RefreshCw } from "lucide-react";
+import { Loader2, Send, User, Database } from "lucide-react";
 import { toast } from "sonner";
 import { Results } from "@/components/results";
 import { QueryViewer } from "@/components/query-viewer";
@@ -45,6 +46,12 @@ interface Message {
   loadingStep?: number;
 }
 
+// Add new interface for query suggestions
+interface QuerySuggestion {
+  text: string;
+  description: string;
+}
+
 export default function Page() {
   const [inputValue, setInputValue] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -54,6 +61,10 @@ export default function Page() {
     Array<{ name: string; url: string }>
   >([]);
   const [selectedConnection, setSelectedConnection] = useState<string>("");
+  const [querySuggestions, setQuerySuggestions] = useState<QuerySuggestion[]>(
+    []
+  );
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +83,14 @@ export default function Page() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Add new useEffect to generate suggestions when connection changes
+  useEffect(() => {
+    if (selectedConnection) {
+      generateQuerySuggestions(selectedConnection);
+      setShowSuggestions(true);
+    }
+  }, [selectedConnection]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -176,9 +195,95 @@ export default function Page() {
     );
   };
 
+  // Function to generate query suggestions based on the selected connection
+  const generateQuerySuggestions = async (connectionUrl: string) => {
+    try {
+      // Fetch schema information from the database
+      const schemaInfo = await getDatabaseSchema(connectionUrl);
+
+      if (!schemaInfo || schemaInfo.tables.length === 0) {
+        setShowSuggestions(false);
+        return;
+      }
+
+      // Generate dynamic suggestions based on schema
+      const suggestions: QuerySuggestion[] = [];
+
+      // Get a list of table names
+      const tables = Array.from(
+        new Set(schemaInfo.tables.map((item: { name: string }) => item.name))
+      );
+
+      // Add table-specific suggestions
+      tables.forEach((table) => {
+        // Get columns for this table
+        const tableColumns = schemaInfo.tables.find(
+          (item) => item.name === table
+        )?.columns;
+
+        // Find date/time columns
+        const dateColumns = tableColumns?.filter(
+          (col) =>
+            col.type.toLowerCase().includes("date") ||
+            col.type.toLowerCase().includes("time")
+        );
+
+        // Find numeric columns
+        const numericColumns = tableColumns
+          ?.filter((col) =>
+            ["int", "float", "decimal", "double", "number", "numeric"].some(
+              (type) => col.type.toLowerCase().includes(type)
+            )
+          )
+          .filter((col) => !col.name.toLowerCase().includes("id"));
+
+        // Add table-specific suggestions
+        suggestions.push({
+          text: `How many records are in ${table}?`,
+          description: `Display the number of rows in the ${table} table`,
+        });
+
+        if (numericColumns && numericColumns.length > 0) {
+          suggestions.push({
+            text: `What's the average ${numericColumns[0].name} in ${table}?`,
+            description: `Calculate the average ${numericColumns[0].name} value in the ${table} table`,
+          });
+
+          suggestions.push({
+            text: `Find the highest ${numericColumns[0].name} values in ${table}`,
+            description: `Identify maximum ${numericColumns[0].name} values in the ${table} table`,
+          });
+        }
+
+        if (dateColumns && dateColumns.length > 0) {
+          suggestions.push({
+            text: `Show me ${table} data trends over time by ${dateColumns[0].name}`,
+            description: `Visualize time-based patterns in ${table} using the ${dateColumns[0].name} field`,
+          });
+        }
+      });
+
+      // Add some cross-table suggestions if there are multiple tables
+      if (tables.length > 1) {
+        suggestions.push({
+          text: `How do ${tables[0]} and ${tables[1]} relate to each other?`,
+          description: `Explore the relationship between the ${tables[0]} and ${tables[1]} tables`,
+        });
+      }
+
+      // Limit to a reasonable number of suggestions
+      setQuerySuggestions(suggestions.slice(0, 6));
+    } catch (error) {
+      console.error("Error generating query suggestions:", error);
+      // Fallback to generic suggestions
+      setShowSuggestions(false);
+    }
+  };
+
   const handleNewChat = () => {
     setMessages([]);
     setInputValue("");
+    setShowSuggestions(false);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -207,7 +312,11 @@ export default function Page() {
         >
           <div className="flex-grow">
             {messages.length === 0 ? (
-              <Instruction />
+              <Instruction
+                showSuggestions={showSuggestions}
+                querySuggestions={querySuggestions}
+                handleSubmit={handleSubmit}
+              />
             ) : (
               <div className="space-y-6">
                 {messages.map((message) => (
@@ -310,7 +419,13 @@ export default function Page() {
           <div className="flex items-center w-1/5">
             <Select
               value={selectedConnection}
-              onValueChange={setSelectedConnection}
+              onValueChange={(value) => {
+                setSelectedConnection(value);
+                // Show suggestions when connection changes
+                if (value && messages.length === 0) {
+                  setShowSuggestions(true);
+                }
+              }}
             >
               <SelectTrigger className="w-full text-sm border-none h-9 bg-muted">
                 <div className="flex items-center gap-2">

@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Dialog,
   DialogContent,
@@ -17,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Loader2 } from "lucide-react";
-import { ConnectionConfig } from "@/types/dataBase";
+import { ConnectionConfig, DatabaseSchema } from "@/types/dataBase";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { getDatabaseSchema } from "@/actions/dbQuery";
@@ -65,6 +67,23 @@ const countColumns = (schema: string): number => {
   return columnCount;
 };
 
+const schemaToString = (schema: DatabaseSchema | undefined) => {
+  if (!schema) return "";
+  return schema.tables
+    .map(
+      (table) =>
+        `${table.name} (\n${table.columns
+          .map(
+            (column) =>
+              `  ${column.name} ${column.type} ${
+                column.nullable ? "" : "NOT NULL"
+              }`
+          )
+          .join("\n")}\n)`
+    )
+    .join("\n");
+};
+
 const ConnectionDialog = ({
   isOpen,
   setIsOpen,
@@ -85,10 +104,10 @@ const ConnectionDialog = ({
 
   // Set schema preview when editing an existing connection
   useEffect(() => {
-    if (isEditing && newConnection.schema) {
-      setSchemaPreview(newConnection.schema);
+    if (isEditing && newConnection.schemaString) {
+      setSchemaPreview(newConnection.schemaString);
     }
-  }, [isEditing, newConnection.schema]);
+  }, [isEditing, newConnection.schemaString]);
 
   const validateForm = () => {
     const newErrors: Partial<Record<keyof ConnectionConfig, boolean>> = {};
@@ -157,15 +176,17 @@ const ConnectionDialog = ({
 
       // Fetch schema after successful connection
       const schema = await getDatabaseSchema(newConnection.url || "");
+      const schemaString = schemaToString(schema);
 
       // Update connection with schema
       setNewConnection({
         ...newConnection,
-        schema: schema || "",
+        schema: schema,
+        schemaString: schemaString,
       });
 
       // Set schema preview for display in dialog
-      setSchemaPreview(schema);
+      setSchemaPreview(schemaString);
 
       toast.success("Connection successful! Schema retrieved.", {
         className: "bg-green-500 text-white border-0",
@@ -307,9 +328,9 @@ const ConnectionDialog = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Database Schema</Label>
-                <span className="text-xs text-muted-foreground">
+                {/* <span className="text-xs text-muted-foreground">
                   {countColumns(schemaPreview)} columns
-                </span>
+                </span> */}
               </div>
               <div className="p-2 font-mono text-xs rounded bg-muted max-h-48 overflow-y-auto">
                 <pre>{schemaPreview}</pre>
@@ -341,7 +362,11 @@ const ConnectionDialog = ({
             <Button
               onClick={handleSubmit}
               disabled={isLoading}
-              className={schemaPreview ? "bg-green-600 hover:bg-green-700" : ""}
+              className={
+                schemaPreview
+                  ? "text-white bg-green-600 hover:bg-green-700"
+                  : ""
+              }
             >
               {isEditing ? "Update" : "Save"} Connection
             </Button>
