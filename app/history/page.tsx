@@ -415,7 +415,7 @@ const DeployedPage = () => {
             <ScrollArea className="h-[calc(100vh-280px)] rounded-md">
               <Table>
                 <TableHeader className="top-0 bg-card z-10">
-                  <TableRow>
+                  <TableRow className="hover:bg-transparent">
                     <TableHead className="w-[35%]">Query</TableHead>
                     <TableHead className="w-[15%]">Time</TableHead>
                     <TableHead className="w-[15%]">Connection</TableHead>
@@ -454,7 +454,7 @@ const DeployedPage = () => {
                         onClick={() => handleSelectHistoryItem(item)}
                       >
                         <TableCell className="font-medium">
-                          <TooltipProvider>
+                          <TooltipProvider delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="truncate max-w-xs">
