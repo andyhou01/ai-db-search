@@ -33,7 +33,7 @@ const Logo = () => {
           </span>
         ) : (
           <span className="bg-gradient-to-b from-slate-300 via-gray-400 to-slate-600 bg-clip-text text-transparent transition-all duration-300 [text-shadow:0_1px_1px_rgba(255,255,255,0.1)]">
-            DB Chat
+            DBChat
           </span>
         )}
         <span className="absolute -inset-1 bg-blue-500/20 dark:bg-blue-400/20 rounded-lg blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>

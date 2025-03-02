@@ -7,7 +7,7 @@ import Footer from "@/app/(home)/_components/footer";
 import { Toaster } from "sonner";
 
 export const metadata = {
-  title: "AI DB Search",
+  title: "Database Chat by AI",
   description: "Chat with databases using natural language powered by the AI",
 };
 
