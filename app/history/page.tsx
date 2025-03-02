@@ -96,9 +96,9 @@ const DeployedPage = () => {
     setHistory(chatHistory);
 
     // Extract unique connections for filtering
-    const connections = [
-      ...new Set(chatHistory.map((item) => item.connection)),
-    ].filter(Boolean);
+    const connections = Array.from(
+      new Set(chatHistory.map((item) => item.connection))
+    ).filter(Boolean);
     setAvailableConnections(connections);
   }, []);
 
