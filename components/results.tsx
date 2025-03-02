@@ -24,7 +24,7 @@ export const Results = ({
     return title
       .split("_")
       .map((word, index) =>
-        index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word,
+        index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word
       )
       .join(" ");
   };
@@ -70,12 +70,12 @@ export const Results = ({
         <TabsContent value="table" className="flex-grow">
           <div className="sm:min-h-[10px] relative">
             <Table className="min-w-full divide-y divide-border">
-              <TableHeader className="bg-secondary sticky top-0 shadow-sm">
+              <TableHeader className="bg-muted top-0 shadow-sm">
                 <TableRow>
                   {columns.map((column, index) => (
                     <TableHead
                       key={index}
-                      className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                      className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider"
                     >
                       {formatColumnTitle(column)}
                     </TableHead>
@@ -92,7 +92,7 @@ export const Results = ({
                       >
                         {formatCellValue(
                           column,
-                          company[column as keyof Unicorn],
+                          company[column as keyof Unicorn]
                         )}
                       </TableCell>
                     ))}

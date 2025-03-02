@@ -3,8 +3,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import { ThemeProvider } from "next-themes";
 import Sidebar from "@/components/sidebar";
-import Header from "@/components/header";
-import Footer from "@/components/footer";
+import Footer from "@/app/(home)/_components/footer";
 import { Toaster } from "sonner";
 
 export const metadata = {
@@ -24,11 +23,9 @@ export default function RootLayout({
           <div className="flex">
             <Sidebar />
             <div className="flex-1 ml-64">
-              <Header />
-              <main className="container max-w-6xl px-8 py-6 mx-auto">
+              <main className="container max-w-6xl px-8 py-0 mx-auto">
                 {children}
               </main>
-              <Footer />
             </div>
           </div>
           <Toaster />
