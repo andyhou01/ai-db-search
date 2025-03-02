@@ -1,170 +1,561 @@
 "use client";
-import { DataTable } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  ChatHistoryItem,
+  getChatHistory,
+  clearChatHistory,
+  deleteHistoryItem,
+} from "@/lib/chat-history";
+import { Results } from "@/components/results";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Trash2,
+  Eye,
+  Code,
+  Download,
+  Trash,
+  Search,
+  SortAsc,
+  SortDesc,
+  Filter,
+  X,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { QueryViewer } from "@/components/query-viewer";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+
+type SortField = "query" | "timestamp" | "results" | "connection";
+type SortOrder = "asc" | "desc";
 
 const DeployedPage = () => {
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  const formatDate = (datetimeStr: string) => {
-    const year = parseInt(datetimeStr.slice(0, 4));
-    const month = parseInt(datetimeStr.slice(4, 6));
-    const day = parseInt(datetimeStr.slice(6, 8));
-    const hours = parseInt(datetimeStr.slice(9, 11));
-    const minutes = parseInt(datetimeStr.slice(11, 13));
-    const seconds = parseInt(datetimeStr.slice(13, 15));
-    const utcDate = new Date(
-      Date.UTC(year, month - 1, day, hours, minutes, seconds)
-    );
-
-    const localDate = new Date(utcDate);
-    const options: Intl.DateTimeFormatOptions = {
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      second: "numeric",
-      hour12: false,
-      // timeZoneName: "short",
-    };
-
-    // return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
-    return localDate.toLocaleString(undefined, options);
-  };
+  const [history, setHistory] = useState<ChatHistoryItem[]>([]);
+  const [filteredHistory, setFilteredHistory] = useState<ChatHistoryItem[]>([]);
+  const [selectedHistoryItem, setSelectedHistoryItem] =
+    useState<ChatHistoryItem | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortField, setSortField] = useState<SortField>("timestamp");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [connectionFilter, setConnectionFilter] = useState<string[]>([]);
+  const [availableConnections, setAvailableConnections] = useState<string[]>(
+    []
+  );
 
   useEffect(() => {
-    // Fetch tasks from Flask API
-    const fetchTasks = async () => {
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/tasks`,
-          {
-            method: "POST",
-          }
-        );
-        let data = await response.json();
+    // Load chat history when component mounts
+    const chatHistory = getChatHistory();
+    setHistory(chatHistory);
 
-        data = data.sort(
-          (a: any, b: any) =>
-            new Date(formatDate(b.datetime)).getTime() -
-            new Date(formatDate(a.datetime)).getTime()
-        );
-
-        data = data.map((item: any, index: number) => {
-          const formattedDate = formatDate(item.datetime);
-
-          const accuracy = ((1 - item.mape) * 100).toFixed(2);
-
-          return {
-            id: index + 1,
-            ...item,
-            trained_time: formattedDate,
-            accuracy: `${accuracy}%`,
-          };
-        });
-
-        setTasks(data);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching tasks:", error);
-        setLoading(false);
-      }
-    };
-
-    fetchTasks();
+    // Extract unique connections for filtering
+    const connections = [
+      ...new Set(chatHistory.map((item) => item.connection)),
+    ].filter(Boolean);
+    setAvailableConnections(connections);
   }, []);
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+  // Apply filters and sorting
+  useEffect(() => {
+    let filtered = [...history];
 
-  const columns = [
-    {
-      Header: "ID",
-      accessor: "id",
-    },
-    {
-      Header: "Query Time",
-      accessor: "query_time",
-    },
-    {
-      Header: "Data Base",
-      accessor: "data_base",
-    },
-    {
-      Header: "Result Size",
-      accessor: "result_size",
-    },
-    {
-      Header: "Actions",
-      accessor: "actions",
-    },
-  ];
-
-  const tableColumns = columns.map((col) => ({
-    accessorKey: col.accessor,
-    header: ({ column }: any) => {
-      return col.accessor === "actions" ? (
-        <div className="p-1 font-semibold text-primary font-lg">
-          {col.Header}
-        </div>
-      ) : (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="p-1 font-semibold text-primary font-lg hover:bg-primary/10"
-        >
-          {col.Header}
-          <ArrowUpDown className="w-4 h-4 ml-2" />
-        </Button>
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (item) =>
+          item.query.toLowerCase().includes(query) ||
+          item.sqlQuery.toLowerCase().includes(query)
       );
-    },
-    cell:
-      col.accessor === "actions"
-        ? ({ row }: any) => (
-            <button
-              onClick={() => handleActionClick(row.original.task_id)}
-              className="underline text-secondary hover:text-blue-600 underline-offset-2"
-            >
-              View Details
-            </button>
-          )
-        : ({ row }: any) => row.original[col.accessor],
-  }));
+    }
 
-  const handleActionClick = (taskId: string) => {
-    router.push(`/dashboard/${taskId}`);
+    // Apply connection filter
+    if (connectionFilter.length > 0) {
+      filtered = filtered.filter((item) =>
+        connectionFilter.includes(item.connection)
+      );
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case "query":
+          comparison = a.query.localeCompare(b.query);
+          break;
+        case "timestamp":
+          comparison = a.timestamp - b.timestamp;
+          break;
+        case "results":
+          comparison = a.results.length - b.results.length;
+          break;
+        case "connection":
+          comparison = (a.connection || "").localeCompare(b.connection || "");
+          break;
+      }
+
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+
+    setFilteredHistory(filtered);
+  }, [history, searchQuery, sortField, sortOrder, connectionFilter]);
+
+  const handleClearHistory = () => {
+    clearChatHistory();
+    setHistory([]);
+    setFilteredHistory([]);
+    setSelectedHistoryItem(null);
+  };
+
+  const handleSelectHistoryItem = (item: ChatHistoryItem) => {
+    setSelectedHistoryItem(item);
+    setIsDialogOpen(true);
+  };
+
+  const handleDeleteClick = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering row selection
+    setItemToDelete(id);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (itemToDelete) {
+      const updatedHistory = deleteHistoryItem(itemToDelete);
+      setHistory(updatedHistory);
+
+      // If the deleted item was selected, clear the selection
+      if (selectedHistoryItem?.id === itemToDelete) {
+        setSelectedHistoryItem(null);
+        setIsDialogOpen(false);
+      }
+
+      setItemToDelete(null);
+    }
+    setIsDeleteDialogOpen(false);
+  };
+
+  const cancelDelete = () => {
+    setItemToDelete(null);
+    setIsDeleteDialogOpen(false);
+  };
+
+  const formatTimestamp = (timestamp: number) => {
+    return formatDistanceToNow(timestamp, { addSuffix: true });
+  };
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortOrder("asc");
+    }
+  };
+
+  const toggleConnectionFilter = (connection: string) => {
+    setConnectionFilter((prev) => {
+      if (prev.includes(connection)) {
+        return prev.filter((c) => c !== connection);
+      } else {
+        return [...prev, connection];
+      }
+    });
+  };
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setConnectionFilter([]);
+    setSortField("timestamp");
+    setSortOrder("desc");
+  };
+
+  const downloadCSV = (item: ChatHistoryItem) => {
+    if (item.results.length === 0) return;
+
+    // Create CSV header row
+    const header = item.columns.join(",");
+
+    // Create CSV rows from data
+    const csvRows = item.results.map((row) => {
+      return item.columns
+        .map((column) => {
+          let value = row[column as keyof typeof row];
+
+          if (typeof value === "string" && value.includes(",")) {
+            return `"${value}"`;
+          }
+
+          return value !== undefined ? String(value) : "";
+        })
+        .join(",");
+    });
+
+    // Combine header and rows
+    const csvContent = [header, ...csvRows].join("\n");
+
+    // Create a blob and download link
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `query-results-${item.id}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="pt-6">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold">Query History</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Explore and manage all your queries in one place
-        </p>
+    <div className="container mx-auto py-8 px-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Query History</h1>
+        {/* {history.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleClearHistory}
+            className="flex items-center gap-1"
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Clear History
+          </Button>
+        )} */}
       </div>
-      <DataTable
-        columns={tableColumns}
-        data={tasks}
-        pageSize={10}
-        tableSummary={
-          <div className="py-[0.4rem] rounded-sm px-4 bg-muted flex w-full">
-            {" "}
-            Totally{" "}
-            <span className="px-2 font-semibold text-primary">
-              {tasks.length}
-            </span>{" "}
-            trained models
+
+      {history.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground py-8">
+              No query history available. Run some queries to see them here.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-0">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search queries..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 w-full"
+                />
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1 h-7 w-7 p-0"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex gap-2 w-full sm:w-auto">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-1"
+                    >
+                      <Filter className="h-4 w-4 mr-1" />
+                      Filter
+                      {connectionFilter.length > 0 && (
+                        <Badge variant="secondary" className="ml-1">
+                          {connectionFilter.length}
+                        </Badge>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onClick={clearFilters}>
+                      Clear all filters
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {availableConnections.map((connection) => (
+                      <DropdownMenuCheckboxItem
+                        key={connection}
+                        checked={connectionFilter.includes(connection)}
+                        onCheckedChange={() =>
+                          toggleConnectionFilter(connection)
+                        }
+                      >
+                        {connection || "Unknown"}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-1"
+                    >
+                      {sortOrder === "asc" ? (
+                        <SortAsc className="h-4 w-4 mr-1" />
+                      ) : (
+                        <SortDesc className="h-4 w-4 mr-1" />
+                      )}
+                      Sort
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => toggleSort("query")}>
+                      Query{" "}
+                      {sortField === "query" &&
+                        (sortOrder === "asc" ? "↑" : "↓")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleSort("timestamp")}>
+                      Time{" "}
+                      {sortField === "timestamp" &&
+                        (sortOrder === "asc" ? "↑" : "↓")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleSort("results")}>
+                      Results{" "}
+                      {sortField === "results" &&
+                        (sortOrder === "asc" ? "↑" : "↓")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleSort("connection")}>
+                      Connection{" "}
+                      {sortField === "connection" &&
+                        (sortOrder === "asc" ? "↑" : "↓")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-0 pt-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[35%]">Query</TableHead>
+                  <TableHead className="w-[15%]">Time</TableHead>
+                  <TableHead className="w-[15%]">Connection</TableHead>
+                  <TableHead className="w-[10%]">Results</TableHead>
+                  <TableHead className="w-[25%] text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredHistory.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="text-center py-8 text-muted-foreground"
+                    >
+                      No matching queries found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredHistory.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleSelectHistoryItem(item)}
+                    >
+                      <TableCell className="font-medium truncate max-w-xs">
+                        {item.query}
+                      </TableCell>
+                      <TableCell>{formatTimestamp(item.timestamp)}</TableCell>
+                      <TableCell>
+                        {item.connection ? (
+                          <Badge variant="outline">{item.connection}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">Unknown</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{item.results.length} rows</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectHistoryItem(item);
+                            }}
+                            className="h-8 w-8 p-0"
+                            title="View Details"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title="View SQL Query"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Code className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent onClick={(e) => e.stopPropagation()}>
+                              <DialogHeader>
+                                <DialogTitle>SQL Query</DialogTitle>
+                              </DialogHeader>
+                              <div className="mt-4">
+                                <QueryViewer
+                                  activeQuery={item.sqlQuery}
+                                  inputValue=""
+                                />
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadCSV(item);
+                            }}
+                            className="h-8 w-8 p-0"
+                            title="Download Results"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => handleDeleteClick(item.id, e)}
+                            className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this query history item. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelDelete}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Details Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{selectedHistoryItem?.query}</DialogTitle>
+            <CardDescription className="flex flex-col sm:flex-row sm:items-center gap-2 mt-1">
+              <span>
+                {selectedHistoryItem &&
+                  formatTimestamp(selectedHistoryItem.timestamp)}
+              </span>
+              {selectedHistoryItem?.connection && (
+                <>
+                  <span className="hidden sm:inline">•</span>
+                  <Badge variant="outline">
+                    {selectedHistoryItem.connection}
+                  </Badge>
+                </>
+              )}
+            </CardDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            {selectedHistoryItem && (
+              <Tabs defaultValue="results">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="results">Results</TabsTrigger>
+                  <TabsTrigger value="query">SQL Query</TabsTrigger>
+                </TabsList>
+                <TabsContent value="results" className="mt-4">
+                  <Results
+                    results={selectedHistoryItem.results}
+                    columns={selectedHistoryItem.columns}
+                    chartConfig={null}
+                  />
+                </TabsContent>
+                <TabsContent value="query" className="mt-4">
+                  <QueryViewer
+                    activeQuery={selectedHistoryItem.sqlQuery}
+                    inputValue=""
+                  />
+                </TabsContent>
+              </Tabs>
+            )}
           </div>
-        }
-      />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
 export default DeployedPage;

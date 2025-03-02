@@ -12,6 +12,7 @@ import { Loader2, Send, User, Database, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Results } from "@/components/results";
 import { QueryViewer } from "@/components/query-viewer";
+import { saveChatHistory } from "@/lib/chat-history";
 
 import {
   Select,
@@ -147,6 +148,15 @@ export default function Page() {
         chartConfig: generation.config,
         loading: false,
       });
+
+      // Save to chat history
+      if (results && results.length > 0) {
+        // Find the connection name from the URL
+        const connectionName =
+          connections.find((conn) => conn.url === selectedConnection)?.name ||
+          selectedConnection;
+        saveChatHistory(question, query, results, columns, connectionName);
+      }
 
       setLoading(false);
     } catch (e) {
