@@ -14,13 +14,11 @@ import {
   CardDescription,
   CardHeader,
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Trash2,
   Eye,
   Code,
   Download,
-  Trash,
   Search,
   SortAsc,
   SortDesc,
@@ -74,6 +72,7 @@ const DeployedPage = () => {
   const [selectedHistoryItem, setSelectedHistoryItem] =
     useState<ChatHistoryItem | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isQueryDialogOpen, setIsQueryDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -152,6 +151,12 @@ const DeployedPage = () => {
   const handleSelectHistoryItem = (item: ChatHistoryItem) => {
     setSelectedHistoryItem(item);
     setIsDialogOpen(true);
+  };
+
+  const handleViewSQLQuery = (item: ChatHistoryItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedHistoryItem(item);
+    setIsQueryDialogOpen(true);
   };
 
   const handleDeleteClick = (id: string, e: React.MouseEvent) => {
@@ -381,8 +386,8 @@ const DeployedPage = () => {
                   <TableHead className="w-[35%]">Query</TableHead>
                   <TableHead className="w-[15%]">Time</TableHead>
                   <TableHead className="w-[15%]">Connection</TableHead>
-                  <TableHead className="w-[10%]">Results</TableHead>
-                  <TableHead className="w-[25%] text-right">Actions</TableHead>
+                  <TableHead className="w-[15%]">Result Size</TableHead>
+                  <TableHead className="w-[20%] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -424,34 +429,19 @@ const DeployedPage = () => {
                               handleSelectHistoryItem(item);
                             }}
                             className="h-8 w-8 p-0"
-                            title="View Details"
+                            title="View Results"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                title="View SQL Query"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Code className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent onClick={(e) => e.stopPropagation()}>
-                              <DialogHeader>
-                                <DialogTitle>SQL Query</DialogTitle>
-                              </DialogHeader>
-                              <div className="mt-4">
-                                <QueryViewer
-                                  activeQuery={item.sqlQuery}
-                                  inputValue=""
-                                />
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => handleViewSQLQuery(item, e)}
+                            className="h-8 w-8 p-0"
+                            title="View SQL Query"
+                          >
+                            <Code className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -509,7 +499,7 @@ const DeployedPage = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Details Dialog */}
+      {/* Results Dialog - Simplified to show only results */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
@@ -531,25 +521,28 @@ const DeployedPage = () => {
           </DialogHeader>
           <div className="mt-4">
             {selectedHistoryItem && (
-              <Tabs defaultValue="results">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="results">Results</TabsTrigger>
-                  <TabsTrigger value="query">SQL Query</TabsTrigger>
-                </TabsList>
-                <TabsContent value="results" className="mt-4">
-                  <Results
-                    results={selectedHistoryItem.results}
-                    columns={selectedHistoryItem.columns}
-                    chartConfig={null}
-                  />
-                </TabsContent>
-                <TabsContent value="query" className="mt-4">
-                  <QueryViewer
-                    activeQuery={selectedHistoryItem.sqlQuery}
-                    inputValue=""
-                  />
-                </TabsContent>
-              </Tabs>
+              <Results
+                results={selectedHistoryItem.results}
+                columns={selectedHistoryItem.columns}
+                chartConfig={null}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Separate SQL Query Dialog */}
+      <Dialog open={isQueryDialogOpen} onOpenChange={setIsQueryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>SQL Query</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            {selectedHistoryItem && (
+              <QueryViewer
+                activeQuery={selectedHistoryItem.sqlQuery}
+                inputValue=""
+              />
             )}
           </div>
         </DialogContent>
