@@ -87,34 +87,21 @@ export const generateQuery = async (
 
       ${schemaToUse}
 
-      Only retrieval queries are allowed.
+      Only retrieval queries are allowed. Do not generate queries that modify data.
 
-      For things like industry, company names and other string fields, use the ILIKE operator and convert both the search term and the field to lowercase using LOWER() function. For example: LOWER(industry) ILIKE LOWER('%search_term%').
+      For string fields, use the ILIKE operator with wildcards and convert both the search term and the field to lowercase using LOWER() function for case-insensitive matching. For example: LOWER(column_name) ILIKE LOWER('%search_term%').
 
-      Note: select_investors is a comma-separated list of investors. Trim whitespace to ensure you're grouping properly. Note, some fields may be null or have only one value.
-      When answering questions about a specific field, ensure you are selecting the identifying column (ie. what is Vercel's valuation would select company and valuation').
+      When answering questions about specific entities, ensure you are selecting both the identifying column and the relevant data columns to provide context.
 
-      The industries available are:
-      - healthcare & life sciences
-      - consumer & retail
-      - financial services
-      - enterprise tech
-      - insurance
-      - media & entertainment
-      - industrials
-      - health
+      For text fields that may contain comma-separated values, use string functions like TRIM() when comparing to ensure accurate results.
 
-      If the user asks for a category that is not in the list, infer based on the list above.
+      If the user asks for temporal trends or data 'over time', group by the appropriate time unit (year, month, day) based on available date/timestamp columns.
 
-      Note: valuation is in billions of dollars so 10b would be 10.0.
-      Note: if the user asks for a rate, return it as a decimal. For example, 0.1 would be 10%.
+      For abbreviations or acronyms in search terms, consider both the abbreviated and full forms in your query when appropriate.
 
-      If the user asks for 'over time' data, return by year.
+      If the user asks for a rate, return it as a decimal. For example, 0.1 would be 10%.
 
-      When searching for UK or USA, write out United Kingdom or United States respectively.
-
-      EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single column, return the column and the count of the column. If the user asks for a rate, return the rate as a decimal. For example, 0.1 would be 10%.
-      `,
+      EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single value, include a relevant grouping dimension or return a count alongside it.`,
       prompt: `Generate the query necessary to retrieve the data the user wants: ${input}`,
       schema: z.object({
         query: z.string(),
@@ -185,12 +172,15 @@ export const explainQuery = async (
       schema: z.object({
         explanations: explanationsSchema,
       }),
-      system: `You are a SQL (postgres) expert. Your job is to explain to the user write a SQL query you wrote to retrieve the data they asked for. The table schema is as follows:
+      system: `You are a SQL (postgres) expert. Your job is to explain SQL queries in a clear, concise manner that helps users understand how the query works. The database schema is as follows:
     ${schemaToUse}
 
-    When you explain you must take a section of the query, and then explain it. Each "section" should be unique. So in a query like: "SELECT * FROM unicorns limit 20", the sections could be "SELECT *", "FROM UNICORNS", "LIMIT 20".
-    If a section doesnt have any explanation, include it, but leave the explanation empty.
+    Break down your explanation into logical sections of the query. For each section:
+    1. Identify a distinct part of the query (SELECT clause, FROM clause, WHERE conditions, etc.)
+    2. Explain what that section accomplishes in plain language
+    3. If a section doesn't need explanation, include it but leave the explanation empty
 
+    Focus on helping non-technical users understand the query logic without getting into advanced SQL concepts unless necessary.
     `,
       prompt: `Explain the SQL query you generated to retrieve the data the user wanted. Assume the user is not an expert in SQL. Break down the query into steps. Be concise.
 
@@ -217,7 +207,17 @@ export const generateChartConfig = async (
   try {
     const { object: config } = await generateObject({
       model: openai("gpt-4o"),
-      system,
+      system: `You are a data visualization expert specializing in selecting the most appropriate chart types for different data patterns. Your goal is to create visualizations that effectively communicate insights while being accessible and easy to interpret.
+
+Choose chart types based on these principles:
+- Bar charts for comparing discrete categories
+- Line charts for temporal trends or continuous data
+- Pie/donut charts only for showing composition when there are few categories
+- Scatter plots for showing correlation between two variables
+- Area charts for cumulative totals or part-to-whole relationships over time
+- Multi-series charts when comparing multiple related metrics
+
+Ensure your visualization choices prioritize clarity, minimize chart junk, and accurately represent the underlying data.`,
       prompt: `Given the following data from a SQL query result, generate the chart config that best visualises the data and answers the users query.
       For multiple groups use multi-lines.
 
