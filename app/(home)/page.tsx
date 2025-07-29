@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { Results } from "@/components/results";
 import { QueryViewer } from "@/components/query-viewer";
 import { saveChatHistory } from "@/lib/chat-history";
+import { SqlErrorDisplay } from "@/components/SqlErrorDisplay";
 
 import {
   Select,
@@ -44,6 +45,16 @@ interface Message {
   chartConfig?: Config | null;
   loading?: boolean;
   loadingStep?: number;
+  sqlError?: {
+    error: string;
+    suggestions?: Record<string, string[]>;
+    validColumns?: string[];
+    suggestedTables?: string[];
+    suggestedFunctions?: string[];
+    functionError?: boolean;
+    generationIssues?: string[];
+    generatedQuery?: string;
+  };
 }
 
 // Add new interface for query suggestions
@@ -136,15 +147,28 @@ export default function Page() {
 
     try {
       // Generate SQL query
-      const query = await generateQuery(question, selectedConnection);
-      if (query === undefined) {
+      const queryResult = await generateQuery(question, selectedConnection);
+
+      // Check if query generation failed
+      if (queryResult.error) {
         updateSystemMessage(systemMessageId, {
-          content: "Failed to generate SQL query. Please try again.",
+          content: "Failed to generate SQL query",
           loading: false,
+          sqlError: {
+            error: queryResult.message,
+            suggestions: {},
+            validColumns: [],
+            suggestedTables: [],
+            generationIssues: queryResult.issues || [],
+            generatedQuery: queryResult.query || "",
+          },
         });
         setLoading(false);
         return;
       }
+
+      // At this point we know queryResult.query is defined
+      const query = queryResult.query;
 
       // Update system message with query
       updateSystemMessage(systemMessageId, {
@@ -153,11 +177,40 @@ export default function Page() {
       });
 
       // Run the query
-      const results = await runGenerateSQLQuery(query, selectedConnection);
+      const queryExecutionResult = await runGenerateSQLQuery(
+        query,
+        selectedConnection
+      );
+
+      // Check if we got an error response
+      if (queryExecutionResult && "error" in queryExecutionResult) {
+        // Handle SQL error
+        updateSystemMessage(systemMessageId, {
+          content: "SQL Error",
+          query,
+          sqlError: {
+            error: queryExecutionResult.error || "Unknown SQL error",
+            suggestions: queryExecutionResult.suggestions,
+            validColumns: queryExecutionResult.validColumns,
+            suggestedTables: queryExecutionResult.suggestedTables,
+            suggestedFunctions: queryExecutionResult.suggestedFunctions,
+            functionError: queryExecutionResult.functionError || false,
+          },
+          loading: false,
+        });
+        setLoading(false);
+        return;
+      }
+
+      // If we get here, queryExecutionResult is a valid Result[]
+      const results = queryExecutionResult as Result[];
       const columns = results.length > 0 ? Object.keys(results[0]) : [];
 
       // Generate chart config
-      const generation = await generateChartConfig(results, question);
+      const generation = await generateChartConfig(
+        results,
+        question || "Updated query"
+      );
 
       // Update system message with results
       updateSystemMessage(systemMessageId, {
@@ -174,7 +227,16 @@ export default function Page() {
         const connectionName =
           connections.find((conn) => conn.url === selectedConnection)?.name ||
           selectedConnection;
-        saveChatHistory(question, query, results, columns, connectionName);
+
+        // Make sure query is a string (not undefined)
+        const queryString = query || "";
+        saveChatHistory(
+          question,
+          queryString,
+          results,
+          columns,
+          connectionName
+        );
       }
 
       setLoading(false);
@@ -368,6 +430,136 @@ export default function Page() {
                                   <QueryViewer
                                     activeQuery={message.query}
                                     inputValue=""
+                                  />
+                                </div>
+                              )}
+
+                              {message.sqlError && (
+                                <div className="mt-2">
+                                  <Badge variant="outline" className="mb-2">
+                                    {message.sqlError.generationIssues?.length
+                                      ? "Query Generation Error"
+                                      : message.sqlError.functionError
+                                      ? "SQL Function Error"
+                                      : "SQL Error"}
+                                  </Badge>
+                                  <SqlErrorDisplay
+                                    error={message.sqlError.error}
+                                    originalQuery={message.query || ""}
+                                    suggestions={message.sqlError.suggestions}
+                                    validColumns={message.sqlError.validColumns}
+                                    suggestedTables={
+                                      message.sqlError.suggestedTables
+                                    }
+                                    suggestedFunctions={
+                                      message.sqlError.suggestedFunctions
+                                    }
+                                    functionError={
+                                      message.sqlError.functionError
+                                    }
+                                    generationIssues={
+                                      message.sqlError.generationIssues
+                                    }
+                                    generatedQuery={
+                                      message.sqlError.generatedQuery
+                                    }
+                                    onRetry={(updatedQuery) => {
+                                      // Create a new query with the updated SQL
+                                      const newSystemMessageId =
+                                        Date.now().toString();
+                                      setMessages((prev) => [
+                                        ...prev,
+                                        {
+                                          id: newSystemMessageId,
+                                          type: "system",
+                                          content: "",
+                                          timestamp: new Date(),
+                                          query: updatedQuery,
+                                          loading: true,
+                                          loadingStep: 2,
+                                        },
+                                      ]);
+
+                                      // Run the updated query
+                                      (async () => {
+                                        try {
+                                          const queryResult =
+                                            await runGenerateSQLQuery(
+                                              updatedQuery,
+                                              selectedConnection
+                                            );
+
+                                          // Check if we got an error response again
+                                          if (
+                                            queryResult &&
+                                            "error" in queryResult
+                                          ) {
+                                            // Handle SQL error
+                                            updateSystemMessage(
+                                              newSystemMessageId,
+                                              {
+                                                content: "SQL Error",
+                                                query: updatedQuery,
+                                                sqlError: {
+                                                  error:
+                                                    queryResult.error ||
+                                                    "Unknown SQL error",
+                                                  suggestions:
+                                                    queryResult.suggestions,
+                                                  validColumns:
+                                                    queryResult.validColumns,
+                                                  suggestedTables:
+                                                    queryResult.suggestedTables,
+                                                  suggestedFunctions:
+                                                    queryResult.suggestedFunctions,
+                                                  functionError:
+                                                    queryResult.functionError ||
+                                                    false,
+                                                },
+                                                loading: false,
+                                              }
+                                            );
+                                            return;
+                                          }
+
+                                          // If we get here, queryResult is a valid Result[]
+                                          const results =
+                                            queryResult as Result[];
+                                          const columns =
+                                            results.length > 0
+                                              ? Object.keys(results[0])
+                                              : [];
+
+                                          // Generate chart config
+                                          const generation =
+                                            await generateChartConfig(
+                                              results,
+                                              "Updated query"
+                                            );
+
+                                          // Update system message with results
+                                          updateSystemMessage(
+                                            newSystemMessageId,
+                                            {
+                                              content: `Here are the results for the updated query:`,
+                                              results,
+                                              columns,
+                                              chartConfig: generation.config,
+                                              loading: false,
+                                            }
+                                          );
+                                        } catch (e) {
+                                          updateSystemMessage(
+                                            newSystemMessageId,
+                                            {
+                                              content:
+                                                "An error occurred. Please try again.",
+                                              loading: false,
+                                            }
+                                          );
+                                        }
+                                      })();
+                                    }}
                                   />
                                 </div>
                               )}
