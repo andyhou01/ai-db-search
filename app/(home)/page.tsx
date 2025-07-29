@@ -72,6 +72,8 @@ export default function Page() {
     Array<{ name: string; url: string }>
   >([]);
   const [selectedConnection, setSelectedConnection] = useState<string>("");
+  const [selectedConnectionName, setSelectedConnectionName] =
+    useState<string>("");
   const [querySuggestions, setQuerySuggestions] = useState<QuerySuggestion[]>(
     []
   );
@@ -87,6 +89,7 @@ export default function Page() {
       // Set first connection as default if available
       if (parsed.length > 0) {
         setSelectedConnection(parsed[0].url);
+        setSelectedConnectionName(parsed[0].name);
       }
     }
   }, []);
@@ -609,11 +612,21 @@ export default function Page() {
         <div className="flex gap-3 p-4 rounded-xl bg-background">
           <div className="flex items-center w-1/5">
             <Select
-              value={selectedConnection}
+              value={
+                selectedConnection && selectedConnectionName
+                  ? `${selectedConnection}|||${selectedConnectionName}`
+                  : ""
+              }
               onValueChange={(value) => {
-                setSelectedConnection(value);
+                // Extract URL and name from the composite value
+                const parts = value.split("|||");
+                const url = parts[0];
+                const name = parts[1];
+
+                setSelectedConnection(url);
+                setSelectedConnectionName(name);
                 // Show suggestions when connection changes
-                if (value && messages.length === 0) {
+                if (url && messages.length === 0) {
                   setShowSuggestions(true);
                 }
               }}
@@ -631,7 +644,10 @@ export default function Page() {
                   </div>
                 ) : (
                   connections.map((conn) => (
-                    <SelectItem key={conn.url} value={conn.url}>
+                    <SelectItem
+                      key={`${conn.url}|||${conn.name}`}
+                      value={`${conn.url}|||${conn.name}`}
+                    >
                       {conn.name}
                     </SelectItem>
                   ))
