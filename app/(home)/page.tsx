@@ -238,6 +238,12 @@ export default function Page() {
           .filter((col) => !col.name.toLowerCase().includes("id"));
 
         // Add table-specific suggestions
+        if (dateColumns && dateColumns.length > 0) {
+          suggestions.push({
+            text: `Show me ${table} data trends over time by ${dateColumns[0].name}`,
+            description: `Visualize time-based patterns in ${table} using the ${dateColumns[0].name} field`,
+          });
+        }
         suggestions.push({
           text: `How many records are in ${table}?`,
           description: `Display the number of rows in the ${table} table`,
@@ -252,13 +258,6 @@ export default function Page() {
           suggestions.push({
             text: `Find the highest ${numericColumns[0].name} values in ${table}`,
             description: `Identify maximum ${numericColumns[0].name} values in the ${table} table`,
-          });
-        }
-
-        if (dateColumns && dateColumns.length > 0) {
-          suggestions.push({
-            text: `Show me ${table} data trends over time by ${dateColumns[0].name}`,
-            description: `Visualize time-based patterns in ${table} using the ${dateColumns[0].name} field`,
           });
         }
       });

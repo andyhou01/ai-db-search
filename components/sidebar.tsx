@@ -34,11 +34,11 @@ export default function Sidebar() {
       icon: Database,
       path: "/connection",
     },
-    {
-      name: "Dashboard",
-      icon: LayoutDashboard,
-      path: "/dashboard",
-    },
+    // {
+    //   name: "Dashboard",
+    //   icon: LayoutDashboard,
+    //   path: "/dashboard",
+    // },
   ];
 
   const path = usePathname();
