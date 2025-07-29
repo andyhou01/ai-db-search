@@ -3,22 +3,30 @@
 import { Config, configSchema, explanationsSchema, Result } from "@/lib/types";
 import { DatabaseSchema } from "@/types/dataBase";
 import { openai } from "@ai-sdk/openai";
-import { createPool } from "@vercel/postgres";
+import { Client } from "pg";
 import { generateObject } from "ai";
 import { z } from "zod";
 
 // Helper function to get SQL client with connection URL
 const getSqlClient = (connectionUrl: string) => {
-  return createPool({
+  return new Client({
     connectionString: connectionUrl,
+    ssl: connectionUrl.includes(".postgres.database.azure.com")
+      ? { rejectUnauthorized: false }
+      : undefined,
+    connectionTimeoutMillis: 8000,
+    query_timeout: 10000,
   });
 };
 
 // New function to get database schema
 export const getDatabaseSchema = async (connectionUrl: string) => {
   "use server";
+  let client: Client | null = null;
+
   try {
-    const client = getSqlClient(connectionUrl);
+    client = getSqlClient(connectionUrl);
+    await client.connect();
 
     // Query to get table information
     const tableQuery = `
@@ -65,13 +73,21 @@ export const getDatabaseSchema = async (connectionUrl: string) => {
   } catch (e) {
     console.error("Error fetching database schema:", e);
     return undefined;
+  } finally {
+    if (client) {
+      try {
+        await client.end();
+      } catch (e) {
+        console.warn("Error closing client connection:", e);
+      }
+    }
   }
 };
 
 // Helper function to ensure a query has a LIMIT clause
 export const ensureQueryHasLimit = async (
   query: string,
-  defaultLimit: number = 200
+  defaultLimit: number = 100
 ): Promise<string> => {
   "use server";
   const normalizedQuery = query.toLowerCase();
@@ -91,7 +107,7 @@ export const generateQuery = async (
   input: string,
   connectionUrl: string,
   existingSchema?: string,
-  defaultLimit: number = 200
+  defaultLimit: number = 100
 ): Promise<
   | {
       error: true;
@@ -223,8 +239,11 @@ export const runGenerateSQLQuery = async (
   }
 
   let data: any;
+  let client: Client | null = null;
+
   try {
-    const client = getSqlClient(connectionUrl);
+    client = getSqlClient(connectionUrl);
+    await client.connect();
     data = await client.query(safeQuery);
     return data.rows as Result[];
   } catch (e: any) {
@@ -291,6 +310,14 @@ export const runGenerateSQLQuery = async (
       return {
         error: `SQL Error: ${e.message}`,
       };
+    }
+  } finally {
+    if (client) {
+      try {
+        await client.end();
+      } catch (e) {
+        console.warn("Error closing client connection:", e);
+      }
     }
   }
 };
