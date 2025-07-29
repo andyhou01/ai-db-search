@@ -634,7 +634,7 @@ export default function Page() {
               <SelectTrigger className="w-full text-sm border-none h-9 bg-muted">
                 <div className="flex items-center gap-2">
                   <Database className="w-4 h-4 text-muted-foreground" />
-                  <SelectValue placeholder="Select a database connection" />
+                  <SelectValue placeholder="Select the DB" />
                 </div>
               </SelectTrigger>
               <SelectContent>
