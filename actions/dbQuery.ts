@@ -68,10 +68,30 @@ export const getDatabaseSchema = async (connectionUrl: string) => {
   }
 };
 
+// Helper function to ensure a query has a LIMIT clause
+export const ensureQueryHasLimit = async (
+  query: string,
+  defaultLimit: number = 200
+): Promise<string> => {
+  "use server";
+  const normalizedQuery = query.toLowerCase();
+
+  // Check if the query already has a LIMIT clause
+  if (/\blimit\s+\d+/i.test(normalizedQuery)) {
+    return query; // Return original if it already has LIMIT
+  }
+
+  // Add LIMIT clause to the query
+  return query.endsWith(";")
+    ? query.slice(0, -1) + ` LIMIT ${defaultLimit};`
+    : query + ` LIMIT ${defaultLimit};`;
+};
+
 export const generateQuery = async (
   input: string,
   connectionUrl: string,
-  existingSchema?: string
+  existingSchema?: string,
+  defaultLimit: number = 200
 ): Promise<
   | {
       error: true;
@@ -123,7 +143,9 @@ export const generateQuery = async (
   
   If the user asks for a rate, return it as a decimal. For example, 0.1 would be 10%.
 
-  EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single value, include a relevant grouping dimension or return a count alongside it.`,
+  EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single value, include a relevant grouping dimension or return a count alongside it.
+  
+  IMPORTANT: Always include a LIMIT clause in your query to prevent returning too many rows. Use LIMIT ${defaultLimit} by default unless the user specifically asks for more or fewer results.`,
       prompt: `Generate the query necessary to retrieve the data the user wants: ${input}`,
       schema: z.object({
         query: z.string(),
@@ -149,7 +171,10 @@ export const generateQuery = async (
       };
     }
 
-    return { error: false, query: result.object.query };
+    // Ensure the query has a LIMIT clause
+    const finalQuery = await ensureQueryHasLimit(result.object.query);
+
+    return { error: false, query: finalQuery };
   } catch (e) {
     console.error(e);
     return {
@@ -165,24 +190,28 @@ export const runGenerateSQLQuery = async (
   connectionUrl: string
 ) => {
   "use server";
+
+  // First, ensure the query has a LIMIT clause
+  const safeQuery = await ensureQueryHasLimit(query);
+
   // Check if the query is a SELECT statement
   if (
-    !query.trim().toLowerCase().startsWith("select") ||
-    query.trim().toLowerCase().includes("drop") ||
-    query.trim().toLowerCase().includes("delete") ||
-    query.trim().toLowerCase().includes("insert") ||
-    query.trim().toLowerCase().includes("update") ||
-    query.trim().toLowerCase().includes("alter") ||
-    query.trim().toLowerCase().includes("truncate") ||
-    query.trim().toLowerCase().includes("create") ||
-    query.trim().toLowerCase().includes("grant") ||
-    query.trim().toLowerCase().includes("revoke")
+    !safeQuery.trim().toLowerCase().startsWith("select") ||
+    safeQuery.trim().toLowerCase().includes("drop") ||
+    safeQuery.trim().toLowerCase().includes("delete") ||
+    safeQuery.trim().toLowerCase().includes("insert") ||
+    safeQuery.trim().toLowerCase().includes("update") ||
+    safeQuery.trim().toLowerCase().includes("alter") ||
+    safeQuery.trim().toLowerCase().includes("truncate") ||
+    safeQuery.trim().toLowerCase().includes("create") ||
+    safeQuery.trim().toLowerCase().includes("grant") ||
+    safeQuery.trim().toLowerCase().includes("revoke")
   ) {
     throw new Error("Only SELECT queries are allowed");
   }
 
   // Validate the query against the schema
-  const validation = await validateSqlQuery(query, connectionUrl);
+  const validation = await validateSqlQuery(safeQuery, connectionUrl);
   if (!validation.isValid) {
     // Return a structured error response with suggestions
     return {
@@ -196,7 +225,7 @@ export const runGenerateSQLQuery = async (
   let data: any;
   try {
     const client = getSqlClient(connectionUrl);
-    data = await client.query(query);
+    data = await client.query(safeQuery);
     return data.rows as Result[];
   } catch (e: any) {
     console.error("SQL query error:", e.message);
