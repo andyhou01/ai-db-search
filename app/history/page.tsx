@@ -921,6 +921,8 @@ const HistoryPage = () => {
                   <QueryViewer
                     activeQuery={selectedHistoryItem.sqlQuery}
                     inputValue=""
+                    connectionUrl={selectedHistoryItem.connection}
+                    connectionName={selectedHistoryItem.connection}
                   />
                 </div>
               </>

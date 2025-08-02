@@ -8,9 +8,13 @@ import { CircleHelp, Loader2 } from "lucide-react";
 export const QueryViewer = ({
   activeQuery,
   inputValue,
+  connectionUrl,
+  connectionName,
 }: {
   activeQuery: string;
   inputValue: string;
+  connectionUrl?: string;
+  connectionName?: string;
 }) => {
   const activeQueryCutoff = 100;
 
@@ -23,9 +27,17 @@ export const QueryViewer = ({
   );
 
   const handleExplainQuery = async () => {
+    if (!connectionUrl) return;
+
     setQueryExpanded(true);
     setLoadingExplanation(true);
-    const { explanations } = await explainQuery(inputValue, activeQuery);
+    const { explanations } = await explainQuery(
+      inputValue,
+      activeQuery,
+      connectionUrl,
+      undefined,
+      connectionName
+    );
     setQueryExplanations(explanations);
     setLoadingExplanation(false);
   };

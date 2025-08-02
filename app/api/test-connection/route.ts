@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Client } from "pg";
+import { getEnhancedDatabaseSchema } from "@/actions/dbQuery";
 
 export async function POST(request: Request) {
   let client: Client | null = null;
@@ -9,6 +10,7 @@ export async function POST(request: Request) {
 
     // Use the URL directly
     const connectionString = body.url;
+    const connectionName = body.name || "unnamed_connection";
 
     if (!connectionString) {
       return NextResponse.json(
@@ -16,21 +18,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    console.log(
-      "Testing connection to:",
-      connectionString.replace(/:[^:@]*@/, ":****@")
-    );
-
-    // For Azure PostgreSQL, use the native pg Client with proper SSL configuration
-    client = new Client({
-      connectionString: connectionString,
-      ssl: connectionString.includes(".postgres.database.azure.com")
-        ? { rejectUnauthorized: false }
-        : undefined,
-      connectionTimeoutMillis: 8000, // 8 second connection timeout
-      query_timeout: 5000, // 5 second query timeout
-    });
 
     console.log(
       "Testing connection to:",
@@ -57,10 +44,41 @@ export async function POST(request: Request) {
     const result = await client.query("SELECT 1 as test");
     console.log("Query result:", result.rows);
 
+    // Close the test connection before starting schema analysis
+    await client.end();
+    client = null;
+
+    // Get enhanced database schema with table summaries
+    console.log("Analyzing database schema and collecting table summaries...");
+    const enhancedSchema = await getEnhancedDatabaseSchema(
+      connectionString,
+      connectionName
+    );
+
+    if (!enhancedSchema) {
+      return NextResponse.json(
+        { error: "Failed to analyze database schema" },
+        { status: 500 }
+      );
+    }
+
+    console.log(
+      `Enhanced schema analysis complete. Found ${enhancedSchema.tableSummaries.length} tables.`
+    );
+
     return NextResponse.json({
       success: true,
-      message: "Connection successful",
+      message: "Connection successful and database analyzed",
       testResult: result.rows[0],
+      schema: enhancedSchema.basicSchema,
+      enhancedSchema: {
+        tableCount: enhancedSchema.tableSummaries.length,
+        totalRows: enhancedSchema.tableSummaries.reduce(
+          (sum, table) => sum + table.rowCount,
+          0
+        ),
+        lastUpdated: enhancedSchema.lastUpdated,
+      },
     });
   } catch (error) {
     console.error("Connection test failed:", error);

@@ -7,6 +7,7 @@ import {
   generateQuery,
   runGenerateSQLQuery,
   getDatabaseSchema,
+  loadEnhancedSchema,
 } from "@/actions/dbQuery";
 import { Config, Result } from "@/lib/types";
 import { Loader2, Send, User, Database } from "lucide-react";
@@ -150,7 +151,13 @@ export default function Page() {
 
     try {
       // Generate SQL query
-      const queryResult = await generateQuery(question, selectedConnection);
+      const queryResult = await generateQuery(
+        question,
+        selectedConnection,
+        undefined,
+        100,
+        selectedConnectionName
+      );
 
       // Check if query generation failed
       if (queryResult.error) {
@@ -263,8 +270,25 @@ export default function Page() {
   // Function to generate query suggestions based on the selected connection
   const generateQuerySuggestions = async (connectionUrl: string) => {
     try {
-      // Fetch schema information from the database
-      const schemaInfo = await getDatabaseSchema(connectionUrl);
+      // First try to get schema from cached enhanced data
+      let schemaInfo;
+      if (selectedConnectionName) {
+        const enhancedSchema = await loadEnhancedSchema(selectedConnectionName);
+        if (enhancedSchema) {
+          schemaInfo = enhancedSchema.basicSchema;
+          console.log(
+            `Using cached schema for suggestions: ${selectedConnectionName}`
+          );
+        }
+      }
+
+      // If no cached schema, fetch from database
+      if (!schemaInfo) {
+        console.log(
+          `No cached schema found for suggestions, fetching from database`
+        );
+        schemaInfo = await getDatabaseSchema(connectionUrl);
+      }
 
       if (!schemaInfo || schemaInfo.tables.length === 0) {
         setShowSuggestions(false);
@@ -276,31 +300,31 @@ export default function Page() {
 
       // Get a list of table names
       const tables = Array.from(
-        new Set(schemaInfo.tables.map((item: { name: string }) => item.name))
+        new Set(schemaInfo.tables.map((item: any) => item.name))
       );
 
       // Add table-specific suggestions
       tables.forEach((table) => {
         // Get columns for this table
         const tableColumns = schemaInfo.tables.find(
-          (item) => item.name === table
+          (item: any) => item.name === table
         )?.columns;
 
         // Find date/time columns
         const dateColumns = tableColumns?.filter(
-          (col) =>
+          (col: any) =>
             col.type.toLowerCase().includes("date") ||
             col.type.toLowerCase().includes("time")
         );
 
         // Find numeric columns
         const numericColumns = tableColumns
-          ?.filter((col) =>
+          ?.filter((col: any) =>
             ["int", "float", "decimal", "double", "number", "numeric"].some(
-              (type) => col.type.toLowerCase().includes(type)
+              (type: string) => col.type.toLowerCase().includes(type)
             )
           )
-          .filter((col) => !col.name.toLowerCase().includes("id"));
+          .filter((col: any) => !col.name.toLowerCase().includes("id"));
 
         // Add table-specific suggestions
         if (dateColumns && dateColumns.length > 0) {
@@ -433,6 +457,8 @@ export default function Page() {
                                   <QueryViewer
                                     activeQuery={message.query}
                                     inputValue=""
+                                    connectionUrl={selectedConnection}
+                                    connectionName={selectedConnectionName}
                                   />
                                 </div>
                               )}

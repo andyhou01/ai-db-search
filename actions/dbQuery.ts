@@ -1,11 +1,18 @@
 "use server";
 
 import { Config, configSchema, explanationsSchema, Result } from "@/lib/types";
-import { DatabaseSchema } from "@/types/dataBase";
+import {
+  DatabaseSchema,
+  EnhancedDatabaseSchema,
+  TableSummary,
+  ColumnSummary,
+} from "@/types/dataBase";
 import { openai } from "@ai-sdk/openai";
 import { Client } from "pg";
 import { generateObject } from "ai";
 import { z } from "zod";
+import fs from "fs/promises";
+import path from "path";
 
 // Helper function to get SQL client with connection URL
 const getSqlClient = (connectionUrl: string) => {
@@ -84,6 +91,269 @@ export const getDatabaseSchema = async (connectionUrl: string) => {
   }
 };
 
+// Enhanced function to get database schema with table summaries
+export const getEnhancedDatabaseSchema = async (
+  connectionUrl: string,
+  connectionName: string
+) => {
+  "use server";
+  let client: Client | null = null;
+
+  try {
+    client = getSqlClient(connectionUrl);
+    await client.connect();
+
+    // First get the basic schema
+    const basicSchema = await getDatabaseSchema(connectionUrl);
+    if (!basicSchema) {
+      throw new Error("Failed to get basic schema");
+    }
+
+    const tableSummaries: TableSummary[] = [];
+
+    // For each table, get detailed summary information
+    for (const table of basicSchema.tables) {
+      const tableName = table.name;
+      console.log(`Analyzing table: ${tableName}`);
+
+      // Get row count
+      const rowCountQuery = `SELECT COUNT(*) as count FROM "${tableName}"`;
+      const rowCountResult = await client.query(rowCountQuery);
+      const rowCount = parseInt(rowCountResult.rows[0].count);
+
+      const columnSummaries: ColumnSummary[] = [];
+
+      // For each column, get summary statistics
+      for (const column of table.columns) {
+        const columnName = column.name;
+        const columnType = column.type.toLowerCase();
+
+        const columnSummary: ColumnSummary = {
+          name: column.name,
+          type: column.type,
+          nullable: column.nullable,
+          default: column.default,
+        };
+
+        try {
+          // Get null count and total count
+          const nullCountQuery = `
+            SELECT 
+              COUNT(*) as total_count,
+              COUNT(CASE WHEN "${columnName}" IS NULL THEN 1 END) as null_count
+            FROM "${tableName}"
+          `;
+          const nullCountResult = await client.query(nullCountQuery);
+          const totalCount = parseInt(nullCountResult.rows[0].total_count);
+          const nullCount = parseInt(nullCountResult.rows[0].null_count);
+
+          columnSummary.summary = {
+            nullCount,
+            totalCount,
+          };
+
+          // Handle different column types
+          if (
+            columnType.includes("varchar") ||
+            columnType.includes("text") ||
+            columnType.includes("char")
+          ) {
+            // For text columns, get distinct values and top values
+            if (
+              columnName.toLowerCase() !== "id" &&
+              !columnName.toLowerCase().includes("_id")
+            ) {
+              try {
+                const distinctQuery = `
+                  SELECT 
+                    "${columnName}" as value,
+                    COUNT(*) as count
+                  FROM "${tableName}"
+                  WHERE "${columnName}" IS NOT NULL
+                  GROUP BY "${columnName}"
+                  ORDER BY COUNT(*) DESC
+                  LIMIT 20
+                `;
+                const distinctResult = await client.query(distinctQuery);
+
+                columnSummary.summary.topValues = distinctResult.rows.map(
+                  (row) => ({
+                    value: String(row.value),
+                    count: parseInt(row.count),
+                  })
+                );
+
+                // If we have 20 or fewer distinct values, also store them as distinctValues
+                if (distinctResult.rows.length <= 20) {
+                  columnSummary.summary.distinctValues =
+                    distinctResult.rows.map((row) => String(row.value));
+                }
+              } catch (error) {
+                console.warn(
+                  `Error getting distinct values for ${tableName}.${columnName}:`,
+                  error
+                );
+              }
+            }
+          } else if (
+            columnType.includes("int") ||
+            columnType.includes("decimal") ||
+            columnType.includes("numeric") ||
+            columnType.includes("float") ||
+            columnType.includes("double") ||
+            columnType.includes("real")
+          ) {
+            // For numerical columns, get statistical summary
+            try {
+              const statsQuery = `
+                SELECT 
+                  MIN("${columnName}") as min_val,
+                  MAX("${columnName}") as max_val,
+                  AVG("${columnName}") as mean_val,
+                  STDDEV("${columnName}") as std_dev,
+                  PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "${columnName}") as median_val
+                FROM "${tableName}"
+                WHERE "${columnName}" IS NOT NULL
+              `;
+              const statsResult = await client.query(statsQuery);
+
+              if (statsResult.rows.length > 0) {
+                const stats = statsResult.rows[0];
+                columnSummary.summary.min = stats.min_val
+                  ? parseFloat(stats.min_val)
+                  : null;
+                columnSummary.summary.max = stats.max_val
+                  ? parseFloat(stats.max_val)
+                  : null;
+                columnSummary.summary.mean = stats.mean_val
+                  ? parseFloat(stats.mean_val)
+                  : null;
+                columnSummary.summary.median = stats.median_val
+                  ? parseFloat(stats.median_val)
+                  : null;
+                columnSummary.summary.stdDev = stats.std_dev
+                  ? parseFloat(stats.std_dev)
+                  : null;
+              }
+            } catch (error) {
+              console.warn(
+                `Error getting stats for ${tableName}.${columnName}:`,
+                error
+              );
+            }
+          } else if (
+            columnType.includes("date") ||
+            columnType.includes("timestamp")
+          ) {
+            // For date columns, get min and max dates
+            try {
+              const dateStatsQuery = `
+                SELECT 
+                  MIN("${columnName}") as min_date,
+                  MAX("${columnName}") as max_date
+                FROM "${tableName}"
+                WHERE "${columnName}" IS NOT NULL
+              `;
+              const dateStatsResult = await client.query(dateStatsQuery);
+
+              if (dateStatsResult.rows.length > 0) {
+                const stats = dateStatsResult.rows[0];
+                columnSummary.summary.min = stats.min_date;
+                columnSummary.summary.max = stats.max_date;
+              }
+            } catch (error) {
+              console.warn(
+                `Error getting date stats for ${tableName}.${columnName}:`,
+                error
+              );
+            }
+          } else if (columnType.includes("bool")) {
+            // For boolean columns, get value distribution
+            try {
+              const boolQuery = `
+                SELECT 
+                  "${columnName}" as value,
+                  COUNT(*) as count
+                FROM "${tableName}"
+                WHERE "${columnName}" IS NOT NULL
+                GROUP BY "${columnName}"
+                ORDER BY COUNT(*) DESC
+              `;
+              const boolResult = await client.query(boolQuery);
+
+              columnSummary.summary.topValues = boolResult.rows.map((row) => ({
+                value: String(row.value),
+                count: parseInt(row.count),
+              }));
+            } catch (error) {
+              console.warn(
+                `Error getting boolean stats for ${tableName}.${columnName}:`,
+                error
+              );
+            }
+          }
+        } catch (error) {
+          console.warn(
+            `Error analyzing column ${tableName}.${columnName}:`,
+            error
+          );
+        }
+
+        columnSummaries.push(columnSummary);
+      }
+
+      tableSummaries.push({
+        name: tableName,
+        rowCount,
+        columns: columnSummaries,
+      });
+    }
+
+    const enhancedSchema: EnhancedDatabaseSchema = {
+      basicSchema,
+      tableSummaries,
+      connectionName,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    // Save the enhanced schema to a JSON file
+    const dataDir = path.join(process.cwd(), "data");
+    await fs.mkdir(dataDir, { recursive: true });
+    const filePath = path.join(dataDir, `${connectionName}.json`);
+    await fs.writeFile(filePath, JSON.stringify(enhancedSchema, null, 2));
+
+    console.log(`Enhanced schema saved to: ${filePath}`);
+
+    return enhancedSchema;
+  } catch (e) {
+    console.error("Error fetching enhanced database schema:", e);
+    return undefined;
+  } finally {
+    if (client) {
+      try {
+        await client.end();
+      } catch (e) {
+        console.warn("Error closing client connection:", e);
+      }
+    }
+  }
+};
+
+// Helper function to load enhanced schema from file
+export const loadEnhancedSchema = async (
+  connectionName: string
+): Promise<EnhancedDatabaseSchema | undefined> => {
+  "use server";
+  try {
+    const filePath = path.join(process.cwd(), "data", `${connectionName}.json`);
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    return JSON.parse(fileContent) as EnhancedDatabaseSchema;
+  } catch (error) {
+    console.log(`No enhanced schema found for connection: ${connectionName}`);
+    return undefined;
+  }
+};
+
 // Helper function to ensure a query has a LIMIT clause
 export const ensureQueryHasLimit = async (
   query: string,
@@ -107,7 +377,8 @@ export const generateQuery = async (
   input: string,
   connectionUrl: string,
   existingSchema?: string,
-  defaultLimit: number = 100
+  defaultLimit: number = 100,
+  connectionName?: string
 ): Promise<
   | {
       error: true;
@@ -123,21 +394,98 @@ export const generateQuery = async (
 > => {
   "use server";
   try {
-    // Use existing schema if provided, otherwise fetch it
-    const dbSchema = existingSchema || (await getDatabaseSchema(connectionUrl));
+    // Try to load enhanced schema first if connection name is provided
+    let enhancedSchema: EnhancedDatabaseSchema | undefined;
+    if (connectionName) {
+      enhancedSchema = await loadEnhancedSchema(connectionName);
+    }
 
-    // Use schema if available
-    const schemaToUse = dbSchema;
+    // Use existing schema if provided, otherwise use cached schema if available, or fetch basic schema as last resort
+    let dbSchema;
+    if (existingSchema) {
+      dbSchema = existingSchema;
+    } else if (enhancedSchema) {
+      // Use the cached basic schema from enhanced schema instead of fetching from DB
+      dbSchema = enhancedSchema.basicSchema;
+      console.log(`Using cached schema for connection: ${connectionName}`);
+    } else {
+      // Only fetch from database if no cached data is available
+      console.log(
+        `No cached schema found, fetching from database for connection: ${
+          connectionName || "unnamed"
+        }`
+      );
+      dbSchema = await getDatabaseSchema(connectionUrl);
+    }
+
+    // Prepare schema information for the AI model
+    let schemaToUse = dbSchema;
+    let additionalContext = "";
+
+    // If we have enhanced schema, include table summaries in the context
+    if (enhancedSchema) {
+      additionalContext = `\n\nTable Summaries (for better understanding of data):\n`;
+
+      enhancedSchema.tableSummaries.forEach((table) => {
+        additionalContext += `\n${table.name} (${table.rowCount} rows):\n`;
+
+        table.columns.forEach((column: any) => {
+          if (column.summary) {
+            const summary = column.summary;
+            additionalContext += `  - ${column.name} (${column.type}): `;
+
+            if (summary.distinctValues && summary.distinctValues.length <= 20) {
+              additionalContext += `Distinct values: ${summary.distinctValues.join(
+                ", "
+              )}`;
+            } else if (summary.topValues && summary.topValues.length > 0) {
+              const topVals = summary.topValues
+                .slice(0, 5)
+                .map((v: any) => `${v.value}(${v.count})`)
+                .join(", ");
+              additionalContext += `Top values: ${topVals}`;
+            }
+
+            if (summary.min !== undefined && summary.max !== undefined) {
+              additionalContext += ` Range: ${summary.min} to ${summary.max}`;
+            }
+
+            if (summary.mean !== undefined && summary.mean !== null) {
+              additionalContext += ` Mean: ${summary.mean.toFixed(2)}`;
+            }
+
+            if (
+              summary.nullCount !== undefined &&
+              summary.totalCount !== undefined
+            ) {
+              const nullPercent = (
+                (summary.nullCount / summary.totalCount) *
+                100
+              ).toFixed(1);
+              additionalContext += ` (${nullPercent}% null)`;
+            }
+
+            additionalContext += `\n`;
+          }
+        });
+      });
+    }
 
     const result = await generateObject({
       model: openai("gpt-4o"),
       system: `You are a SQL (postgres) and data visualization expert. Your job is to help the user write a SQL query to retrieve the data they need. The table schema is as follows:
 
-  ${schemaToUse}
+  ${schemaToUse}${additionalContext}
 
   Only retrieval queries are allowed. Do not generate queries that modify data.
 
   IMPORTANT: Only use column names that actually exist in the schema above. Do not invent or assume column names that aren't explicitly defined in the schema. Double-check all column references against the schema before finalizing your query.
+
+  When you have table summaries available, use them to:
+  - Choose appropriate WHERE clauses based on actual data values
+  - Understand the data distribution for better aggregations
+  - Use actual category values when filtering text columns
+  - Consider the data ranges when creating meaningful groupings
 
   You can use standard PostgreSQL functions like DATE_TRUNC, EXTRACT, TO_CHAR, etc. when appropriate for date/time manipulation and formatting. For example:
   - DATE_TRUNC('month', date_column) to truncate a date to the month level
@@ -224,18 +572,6 @@ export const runGenerateSQLQuery = async (
     safeQuery.trim().toLowerCase().includes("revoke")
   ) {
     throw new Error("Only SELECT queries are allowed");
-  }
-
-  // Validate the query against the schema
-  const validation = await validateSqlQuery(safeQuery, connectionUrl);
-  if (!validation.isValid) {
-    // Return a structured error response with suggestions
-    return {
-      error: validation.error,
-      suggestions: validation.suggestions || {},
-      validColumns: validation.validColumns || [],
-      suggestedTables: validation.suggestedTables || [],
-    };
   }
 
   let data: any;
@@ -326,15 +662,45 @@ export const explainQuery = async (
   input: string,
   sqlQuery: string,
   connectionUrl: string,
-  existingSchema?: string
+  existingSchema?: string,
+  connectionName?: string
 ) => {
   "use server";
   try {
-    // Use existing schema if provided, otherwise fetch it
-    const dbSchema = existingSchema || (await getDatabaseSchema(connectionUrl));
+    // Try to load enhanced schema first if connection name is provided
+    let enhancedSchema: EnhancedDatabaseSchema | undefined;
+    if (connectionName) {
+      enhancedSchema = await loadEnhancedSchema(connectionName);
+    }
+
+    // Use existing schema if provided, otherwise use cached schema if available, or fetch from database as last resort
+    let dbSchema;
+    if (existingSchema) {
+      dbSchema = existingSchema;
+    } else if (enhancedSchema) {
+      // Use the cached basic schema from enhanced schema instead of fetching from DB
+      dbSchema = enhancedSchema.basicSchema;
+      console.log(`Using cached schema for explanation: ${connectionName}`);
+    } else {
+      // Only fetch from database if no cached data is available
+      console.log(
+        `No cached schema found for explanation, fetching from database`
+      );
+      dbSchema = await getDatabaseSchema(connectionUrl);
+    }
 
     // Use schema if available
-    const schemaToUse = dbSchema;
+    let schemaToUse = dbSchema;
+    let additionalContext = "";
+
+    // If we have enhanced schema, include simplified table summaries for context
+    if (enhancedSchema) {
+      additionalContext = `\n\nTable Context:\n`;
+      enhancedSchema.tableSummaries.forEach((table) => {
+        additionalContext += `${table.name} (${table.rowCount} rows), `;
+      });
+      additionalContext = additionalContext.slice(0, -2); // Remove trailing comma
+    }
 
     const result = await generateObject({
       model: openai("gpt-4o"),
@@ -342,7 +708,7 @@ export const explainQuery = async (
         explanations: explanationsSchema,
       }),
       system: `You are a SQL (postgres) expert. Your job is to explain SQL queries in a clear, concise manner that helps users understand how the query works. The database schema is as follows:
-    ${schemaToUse}
+    ${schemaToUse}${additionalContext}
 
     Break down your explanation into logical sections of the query. For each section:
     1. Identify a distinct part of the query (SELECT clause, FROM clause, WHERE conditions, etc.)
@@ -427,12 +793,29 @@ Ensure your visualization choices prioritize clarity, minimize chart junk, and a
 // Helper function to validate SQL query against schema
 export const validateSqlQuery = async (
   query: string,
-  connectionUrl: string
+  connectionUrl: string,
+  connectionName?: string
 ) => {
   "use server";
   try {
-    // Get the database schema
-    const schema = await getDatabaseSchema(connectionUrl);
+    // Try to get schema from cached data first
+    let schema;
+    if (connectionName) {
+      const enhancedSchema = await loadEnhancedSchema(connectionName);
+      if (enhancedSchema) {
+        schema = enhancedSchema.basicSchema;
+        console.log(`Using cached schema for validation: ${connectionName}`);
+      }
+    }
+
+    // If no cached schema, get from database
+    if (!schema) {
+      console.log(
+        `No cached schema found for validation, fetching from database`
+      );
+      schema = await getDatabaseSchema(connectionUrl);
+    }
+
     if (!schema) {
       return { isValid: false, error: "Could not retrieve database schema" };
     }
@@ -599,7 +982,9 @@ export const validateSqlQuery = async (
     // Check if tables exist
     const invalidTables = tableNames.filter(
       (tableName) =>
-        !schema.tables.some((table) => table.name.toLowerCase() === tableName)
+        !schema.tables.some(
+          (table: any) => table.name.toLowerCase() === tableName
+        )
     );
 
     if (invalidTables.length > 0) {
@@ -612,9 +997,9 @@ export const validateSqlQuery = async (
 
     // Get all valid column names from the schema for the tables in the query
     const validColumns = new Set<string>();
-    schema.tables.forEach((table) => {
+    schema.tables.forEach((table: any) => {
       if (tableNames.includes(table.name.toLowerCase())) {
-        table.columns.forEach((column) => {
+        table.columns.forEach((column: any) => {
           validColumns.add(column.name.toLowerCase());
           // Also add table.column format
           validColumns.add(

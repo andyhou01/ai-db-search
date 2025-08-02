@@ -160,13 +160,8 @@ const ConnectionDialog = ({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          ...newConnection,
-          // Clear unused fields
-          host: "",
-          port: "",
-          username: "",
-          password: "",
-          database: "",
+          url: newConnection.url,
+          name: newConnection.name,
         }),
       });
 
@@ -174,8 +169,10 @@ const ConnectionDialog = ({
         throw new Error("Connection failed");
       }
 
-      // Fetch schema after successful connection
-      const schema = await getDatabaseSchema(newConnection.url || "");
+      const result = await response.json();
+
+      // Fetch schema after successful connection (using the basic schema from the response)
+      const schema = result.schema;
       const schemaString = schemaToString(schema);
 
       // Update connection with schema
@@ -188,9 +185,14 @@ const ConnectionDialog = ({
       // Set schema preview for display in dialog
       setSchemaPreview(schemaString);
 
-      toast.success("Connection successful! Schema retrieved.", {
-        className: "bg-green-500 text-white border-0",
-      });
+      const enhancedInfo = result.enhancedSchema;
+      toast.success(
+        `Connection successful! Database analyzed: ${enhancedInfo.tableCount} tables, ${enhancedInfo.totalRows} total rows.`,
+        {
+          className: "bg-green-500 text-white border-0",
+          duration: 5000,
+        }
+      );
     } catch (error) {
       toast.error("Failed to connect to database!", {
         className: "bg-red-500 text-white border-0",
