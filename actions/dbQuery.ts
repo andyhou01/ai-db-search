@@ -1526,7 +1526,12 @@ export const shouldVisualizeData = async (
 
         You must respond with a valid JSON object containing:
         - "shouldVisualize": boolean indicating if data should be visualized
-        - "reason": string explaining why visualization is or isn't appropriate
+        - "reason": string explaining why visualization is or isn't appropriate (keep this user-friendly and non-technical)
+        
+        For the reason field, use clear, business-focused language that explains the decision. Examples:
+        - "The question asks about changes over time in compliance states, which involves trends and comparisons across multiple categories. Visualization, such as a line or bar chart, would effectively highlight these changes and patterns."
+        - "This question asks for a specific count value. A simple text answer is more appropriate than a chart for single numerical values."
+        - "The data shows multiple categories being compared across different time periods, making it ideal for visualization to spot trends and patterns."
         
         Do not include any markdown formatting, code blocks, or additional text. Return only the JSON object.
         

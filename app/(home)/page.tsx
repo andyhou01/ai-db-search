@@ -261,20 +261,7 @@ export default function Page() {
       // Update system message with AI answer first, data hidden initially, charts visible by default
       updateSystemMessage(systemMessageId, {
         content: aiAnswer ? "" : `Here are the results for: "${question}"`,
-        aiAnswer: aiAnswer
-          ? {
-              ...aiAnswer,
-              summary:
-                aiAnswer.summary +
-                (visualizationDecision
-                  ? `\n\n📊 Visualization: ${
-                      visualizationDecision.shouldVisualize
-                        ? "Enabled"
-                        : "Not needed"
-                    } - ${visualizationDecision.reason}`
-                  : ""),
-            }
-          : undefined,
+        aiAnswer,
         results,
         columns,
         chartConfig: generation?.config || null,
@@ -586,22 +573,7 @@ export default function Page() {
                                               content: aiAnswer
                                                 ? ""
                                                 : `Here are the results for the updated query:`,
-                                              aiAnswer: aiAnswer
-                                                ? {
-                                                    ...aiAnswer,
-                                                    summary:
-                                                      aiAnswer.summary +
-                                                      (visualizationDecision
-                                                        ? `\n\n📊 Visualization: ${
-                                                            visualizationDecision.shouldVisualize
-                                                              ? "Enabled"
-                                                              : "Not needed"
-                                                          } - ${
-                                                            visualizationDecision.reason
-                                                          }`
-                                                        : ""),
-                                                  }
-                                                : undefined,
+                                              aiAnswer,
                                               results,
                                               columns,
                                               chartConfig:
@@ -630,89 +602,147 @@ export default function Page() {
                               {/* AI Answer Display */}
                               {message.aiAnswer && (
                                 <div className="mt-3">
-                                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200/50 dark:border-blue-800/30 rounded-lg p-4 shadow-sm">
-                                    <div className="flex items-center gap-2 mb-3">
-                                      <div className="flex items-center gap-2">
-                                        <div className="relative">
-                                          <Brain className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                          <div className="absolute -top-1 -right-1">
-                                            <Sparkles className="w-2.5 h-2.5 text-yellow-500 animate-pulse" />
+                                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200/50 dark:border-blue-800/30 rounded-xl p-5 shadow-sm relative overflow-hidden">
+                                    {/* Decorative background pattern */}
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-100/30 to-transparent dark:from-blue-800/20 rounded-full -translate-y-16 translate-x-16 pointer-events-none"></div>
+                                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-100/30 to-transparent dark:from-indigo-800/20 rounded-full translate-y-12 -translate-x-12 pointer-events-none"></div>
+
+                                    <div className="relative">
+                                      <div className="flex items-center gap-3 mb-4">
+                                        <div className="flex items-center gap-2">
+                                          <div className="relative">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                                              <Brain className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div className="absolute -top-1 -right-1">
+                                              <Sparkles className="w-4 h-4 text-yellow-500 animate-pulse drop-shadow-sm" />
+                                            </div>
+                                          </div>
+                                          <div className="flex flex-col">
+                                            <Badge
+                                              variant="secondary"
+                                              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 shadow-sm font-semibold"
+                                            >
+                                              ✨ AI Analysis
+                                            </Badge>
+                                            <span className="text-xs text-muted-foreground mt-1">
+                                              Intelligent insights from your
+                                              data
+                                            </span>
                                           </div>
                                         </div>
-                                        <Badge
-                                          variant="secondary"
-                                          className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 shadow-sm"
-                                        >
-                                          ✨ AI Analysis
-                                        </Badge>
                                       </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                      <p className="text-foreground font-medium leading-relaxed">
-                                        {message.aiAnswer.answer}
-                                      </p>
-
-                                      {message.aiAnswer.keyInsights.length >
-                                        0 && (
-                                        <div>
-                                          <h4 className="text-sm font-semibold text-muted-foreground mb-2">
-                                            Key Insights:
-                                          </h4>
-                                          <ul className="space-y-1">
-                                            {message.aiAnswer.keyInsights.map(
-                                              (insight, index) => (
-                                                <li
-                                                  key={index}
-                                                  className="flex items-start gap-2 text-sm text-muted-foreground"
-                                                >
-                                                  <span className="text-primary mt-1">
-                                                    •
-                                                  </span>
-                                                  <span>{insight}</span>
-                                                </li>
-                                              )
-                                            )}
-                                          </ul>
+                                      <div className="space-y-4">
+                                        <div className="relative">
+                                          <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-lg"></div>
+                                          <div className="relative bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-blue-100/50 dark:border-blue-800/30 rounded-lg p-4 shadow-sm">
+                                            <p className="text-foreground font-medium leading-relaxed text-base">
+                                              {message.aiAnswer.answer}
+                                            </p>
+                                          </div>
                                         </div>
-                                      )}
 
-                                      {message.aiAnswer.summary && (
-                                        <div className="bg-muted/50 border-l-4 border-primary pl-3 py-2">
-                                          <p className="text-sm text-muted-foreground italic">
-                                            {message.aiAnswer.summary}
-                                          </p>
-                                        </div>
-                                      )}
-                                    </div>
+                                        {message.aiAnswer.keyInsights.length >
+                                          0 && (
+                                          <div className="mt-4">
+                                            <div className="flex items-center gap-2 mb-3">
+                                              <div className="w-1 h-6 bg-gradient-to-b from-blue-500 to-blue-600 rounded-full"></div>
+                                              <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                                                Key Insights
+                                              </h4>
+                                              <div className="h-px flex-1 bg-gradient-to-r from-blue-200/50 to-transparent"></div>
+                                            </div>
+                                            <div className="space-y-3">
+                                              {message.aiAnswer.keyInsights.map(
+                                                (insight, index) => (
+                                                  <div
+                                                    key={index}
+                                                    className="flex items-start gap-3 group"
+                                                  >
+                                                    <div className="flex-shrink-0 mt-1">
+                                                      <div className="w-6 h-6 bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/50 dark:to-blue-800/50 rounded-full flex items-center justify-center border border-blue-200/50 dark:border-blue-700/50 group-hover:scale-110 transition-transform duration-200">
+                                                        <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">
+                                                          {index + 1}
+                                                        </span>
+                                                      </div>
+                                                    </div>
+                                                    <p className="text-sm text-muted-foreground leading-relaxed flex-1 group-hover:text-foreground transition-colors duration-200">
+                                                      {insight}
+                                                    </p>
+                                                  </div>
+                                                )
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
 
-                                    <div className="mt-4 flex gap-2">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                          toggleDataView(message.id)
-                                        }
-                                        className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/20 transition-all duration-200"
-                                      >
-                                        <Database className="w-3 h-3 mr-1" />
-                                        {message.showData
-                                          ? "Hide Data Table"
-                                          : "Show Data Table"}
-                                      </Button>
+                                        {message.aiAnswer.summary && (
+                                          <div className="relative mt-4 bg-gradient-to-r from-amber-50 via-orange-50 to-red-50 dark:from-amber-950/20 dark:via-orange-950/20 dark:to-red-950/20 border border-amber-200/60 dark:border-amber-800/30 rounded-lg p-4 shadow-sm overflow-hidden">
+                                            {/* Decorative gradient overlay */}
+                                            <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-amber-100/30 dark:to-amber-900/10 pointer-events-none"></div>
 
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                          toggleQueryView(message.id)
-                                        }
-                                        className="text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-950/20 transition-all duration-200"
-                                      >
-                                        <Brain className="w-3 h-3 mr-1" />
-                                        {message.showQuery
-                                          ? "Hide SQL Query"
-                                          : "Show SQL Query"}
-                                      </Button>
+                                            {/* Content */}
+                                            <div className="relative">
+                                              <div className="flex items-start gap-3">
+                                                <div className="flex-shrink-0 mt-0.5">
+                                                  <div className="relative">
+                                                    <div className="flex items-center justify-center shadow-sm">
+                                                      <span className="text-white text-2xl font-bold">
+                                                        💡
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                  <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2">
+                                                    <span>
+                                                      Key Recommendation
+                                                    </span>
+                                                    <div className="h-px flex-1 bg-gradient-to-r from-amber-300/50 to-transparent"></div>
+                                                  </h4>
+                                                  <p className="text-sm text-amber-900 dark:text-amber-100 leading-relaxed font-medium">
+                                                    {message.aiAnswer.summary}
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            </div>
+
+                                            {/* Subtle bottom accent */}
+                                            <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-300/50 to-transparent"></div>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="mt-6 flex gap-3 pt-4 border-t border-blue-100/50 dark:border-blue-800/30">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() =>
+                                            toggleDataView(message.id)
+                                          }
+                                          className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/20 transition-all duration-200 hover:scale-105 hover:shadow-sm"
+                                        >
+                                          <Database className="w-3 h-3 mr-2" />
+                                          {message.showData
+                                            ? "Hide Data Table"
+                                            : "Show Data Table"}
+                                        </Button>
+
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() =>
+                                            toggleQueryView(message.id)
+                                          }
+                                          className="text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-950/20 transition-all duration-200 hover:scale-105 hover:shadow-sm"
+                                        >
+                                          <Brain className="w-3 h-3 mr-2" />
+                                          {message.showQuery
+                                            ? "Hide SQL Query"
+                                            : "Show SQL Query"}
+                                        </Button>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
