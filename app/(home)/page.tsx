@@ -444,7 +444,7 @@ export default function Page() {
       <Header messages={messages} handleNewChat={handleNewChat} />
 
       {/* Scrollable chat area */}
-      <div className="flex flex-col w-full max-w-5xl h-[86vh] mt-16 overflow-y-auto p-8">
+      <div className="flex flex-col w-full max-w-5xl h-[86vh] mt-16 overflow-y-auto pr-6 py-8">
         <motion.div
           className="flex flex-col h-full"
           initial={{ opacity: 0 }}
@@ -780,6 +780,7 @@ export default function Page() {
                                       results={message.results}
                                       chartConfig={message.chartConfig || null}
                                       columns={message.columns}
+                                      tableOnly={true}
                                     />
                                   </div>
                                 )}

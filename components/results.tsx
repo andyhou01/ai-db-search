@@ -18,10 +18,12 @@ export const Results = ({
   results,
   columns,
   chartConfig,
+  tableOnly = false,
 }: {
   results: Result[];
   columns: string[];
   chartConfig: Config | null;
+  tableOnly?: boolean;
 }) => {
   // Add pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -118,19 +120,9 @@ export const Results = ({
 
   return (
     <div className="flex-grow flex flex-col">
-      <Tabs defaultValue="table" className="w-full flex-grow flex flex-col">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="table">Table</TabsTrigger>
-          <TabsTrigger
-            value="charts"
-            disabled={
-              Object.keys(results[0] || {}).length <= 1 || results.length < 2
-            }
-          >
-            Chart
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="table" className="flex-grow flex flex-col">
+      {tableOnly ? (
+        // Table-only view for data display
+        <div className="flex-grow flex flex-col">
           <div className="flex justify-end mb-2">
             <Button
               variant="outline"
@@ -143,38 +135,46 @@ export const Results = ({
               Download CSV
             </Button>
           </div>
-          <div className="sm:min-h-[10px] relative flex-grow">
-            <Table className="min-w-full divide-y divide-border">
-              <TableHeader className="bg-muted top-0 shadow-sm">
-                <TableRow>
-                  {columns.map((column, index) => (
-                    <TableHead
-                      key={index}
-                      className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider"
-                    >
-                      {formatColumnTitle(column)}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody className="bg-card divide-y divide-border">
-                {currentItems.map((company, index) => (
-                  <TableRow key={index} className="hover:bg-muted">
-                    {columns.map((column, cellIndex) => (
-                      <TableCell
-                        key={cellIndex}
-                        className="px-6 py-4 whitespace-nowrap text-sm text-foreground"
+          <div className="sm:min-h-[10px] relative flex-grow overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table className="min-w-full divide-y divide-border">
+                <TableHeader className="bg-muted top-0 shadow-sm">
+                  <TableRow>
+                    {columns.map((column, index) => (
+                      <TableHead
+                        key={index}
+                        className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider max-w-[200px] truncate"
                       >
-                        {formatCellValue(
-                          column,
-                          company[column as keyof Unicorn]
-                        )}
-                      </TableCell>
+                        {formatColumnTitle(column)}
+                      </TableHead>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody className="bg-card divide-y divide-border">
+                  {currentItems.map((company, index) => (
+                    <TableRow key={index} className="hover:bg-muted">
+                      {columns.map((column, cellIndex) => (
+                        <TableCell
+                          key={cellIndex}
+                          className="px-4 py-4 text-sm text-foreground max-w-[200px] truncate"
+                          title={String(
+                            formatCellValue(
+                              column,
+                              company[column as keyof Unicorn]
+                            )
+                          )}
+                        >
+                          {formatCellValue(
+                            column,
+                            company[column as keyof Unicorn]
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           {/* Pagination controls */}
@@ -207,17 +207,110 @@ export const Results = ({
               </div>
             </div>
           )}
-        </TabsContent>
-        <TabsContent value="charts" className="flex-grow overflow-auto">
-          <div className="mt-4">
-            {chartConfig && results.length > 0 ? (
-              <DynamicChart chartData={results} chartConfig={chartConfig} />
-            ) : (
-              <SkeletonCard />
+        </div>
+      ) : (
+        // Full view with tabs
+        <Tabs defaultValue="table" className="w-full flex-grow flex flex-col">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger
+              value="charts"
+              disabled={
+                Object.keys(results[0] || {}).length <= 1 || results.length < 2
+              }
+            >
+              Chart
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="table" className="flex-grow flex flex-col">
+            <div className="flex justify-end mb-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadCSV}
+                disabled={results.length === 0}
+                className="flex items-center gap-1"
+              >
+                <Download className="h-4 w-4" />
+                Download CSV
+              </Button>
+            </div>
+            <div className="sm:min-h-[10px] relative flex-grow">
+              <Table className="min-w-full divide-y divide-border">
+                <TableHeader className="bg-muted top-0 shadow-sm">
+                  <TableRow>
+                    {columns.map((column, index) => (
+                      <TableHead
+                        key={index}
+                        className="px-6 py-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider"
+                      >
+                        {formatColumnTitle(column)}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="bg-card divide-y divide-border">
+                  {currentItems.map((company, index) => (
+                    <TableRow key={index} className="hover:bg-muted">
+                      {columns.map((column, cellIndex) => (
+                        <TableCell
+                          key={cellIndex}
+                          className="px-6 py-4 whitespace-nowrap text-sm text-foreground"
+                        >
+                          {formatCellValue(
+                            column,
+                            company[column as keyof Unicorn]
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Pagination controls */}
+            {results.length > itemsPerPage && (
+              <div className="flex items-center justify-between pt-4">
+                <div className="text-sm text-muted-foreground">
+                  Showing {indexOfFirstItem + 1}-
+                  {Math.min(indexOfLastItem, results.length)} of{" "}
+                  {results.length} results
+                </div>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToPrevPage}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
             )}
-          </div>
-        </TabsContent>
-      </Tabs>
+          </TabsContent>
+          <TabsContent value="charts" className="flex-grow overflow-auto">
+            <div className="mt-4">
+              {chartConfig && results.length > 0 ? (
+                <DynamicChart chartData={results} chartConfig={chartConfig} />
+              ) : (
+                <SkeletonCard />
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 };
