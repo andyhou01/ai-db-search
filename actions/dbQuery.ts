@@ -497,6 +497,12 @@ export const generateQuery = async (
     - DATE_TRUNC('month', date_column) to truncate a date to the month level
     - EXTRACT(YEAR FROM date_column) to extract the year from a date
     - TO_CHAR(date_column, 'YYYY-MM') to format a date as year-month
+    - TO_CHAR(date_column, 'YYYY-MM-DD') to format a date as YYYY-MM-DD for better chart readability
+
+    IMPORTANT FOR DATES: When selecting date or timestamp columns that will be used as x-axis values in charts, always format them using TO_CHAR() or DATE_TRUNC() to make them human-readable. Avoid returning raw timestamps or epoch values. Examples:
+    - SELECT TO_CHAR(date_column, 'YYYY-MM-DD') as day, COUNT(*) FROM table GROUP BY day
+    - SELECT DATE_TRUNC('day', timestamp_column) as day, COUNT(*) FROM table GROUP BY day
+    - SELECT TO_CHAR(created_at, 'Mon DD') as date_label, COUNT(*) FROM table GROUP BY date_label ORDER BY MIN(created_at)
 
     For string fields, use the ILIKE operator with wildcards and convert both the search term and the field to lowercase using LOWER() function for case-insensitive matching. For example: LOWER(column_name) ILIKE LOWER('%search_term%').
 
@@ -828,28 +834,42 @@ Choose chart types based on these principles:
 - Area charts for cumulative totals or part-to-whole relationships over time
 - Multi-series charts when comparing multiple related metrics
 
+When dealing with date/time data:
+- Always use line or area charts for time series data
+- Ensure the x-axis field contains dates or timestamps
+- Consider the temporal nature of the data in your visualization choice
+
 Ensure your visualization choices prioritize clarity, minimize chart junk, and accurately represent the underlying data.`,
         prompt: `Given the following data from a SQL query result, generate the chart config that best visualises the data and answers the users query.
         For multiple groups use multi-lines.
+        
+        IMPORTANT: If the x-axis field contains dates, timestamps, or time-related data, make sure to use "line" or "area" chart types for better temporal visualization.
 
         Here is an example complete config:
         export const chartConfig = {
-          type: "pie",
-          xKey: "month",
-          yKeys: ["sales", "profit", "expenses"],
+          type: "line", // Use "line" for time series data
+          xKey: "day", // This should be the date/time field
+          yKeys: ["count"],
           colors: {
-            sales: "#4CAF50",    // Green for sales
-            profit: "#2196F3",   // Blue for profit
-            expenses: "#F44336"  // Red for expenses
+            count: "#4CAF50"
           },
-          legend: true
+          legend: true,
+          title: "UAE Sovereign Policies Compliance Changes Over a Week",
+          description: "Shows how compliance states changed day by day"
         }
 
         User Query:
         ${userQuery}
 
-        Data:
-        ${JSON.stringify(results, null, 2)}`,
+        Data Sample (first few rows):
+        ${JSON.stringify(results.slice(0, 5), null, 2)}
+        
+        Data Structure Analysis:
+        - Total rows: ${results.length}
+        - Column names: ${Object.keys(results[0] || {}).join(", ")}
+        - Sample values: ${Object.entries(results[0] || {})
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(", ")}`,
         schema: configSchema,
       });
 

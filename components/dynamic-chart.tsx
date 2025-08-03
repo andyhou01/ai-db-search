@@ -24,6 +24,7 @@ import {
 import { Config, Result } from "@/lib/types";
 import { Label } from "recharts";
 import { transformDataForMultiLineChart } from "@/lib/rechart-format";
+import { isDateLike, formatDateForChart } from "@/lib/utils";
 
 function toTitleCase(str: string): string {
   return str
@@ -51,15 +52,62 @@ export function DynamicChart({
 }) {
   const renderChart = () => {
     if (!chartData || !chartConfig) return <div>No chart data</div>;
+
     const parsedChartData = chartData.map((item) => {
       const parsedItem: { [key: string]: any } = {};
       for (const [key, value] of Object.entries(item)) {
-        parsedItem[key] = isNaN(Number(value)) ? value : Number(value);
+        if (key === chartConfig.xKey) {
+          // Always check and format x-axis values for better chart display
+          if (isDateLike(value)) {
+            // Format the x-axis value if it's a date
+            const formattedValue = formatDateForChart(value);
+            parsedItem[key] = formattedValue;
+            parsedItem[`${key}_original`] = value; // Keep original for sorting if needed
+
+            // Debug logging
+            if (formattedValue !== String(value)) {
+              console.log(
+                `Formatted x-axis date: ${value} -> ${formattedValue}`
+              );
+            }
+          } else {
+            parsedItem[key] = value;
+          }
+        } else {
+          // For non-x-axis values, convert numbers appropriately
+          parsedItem[key] = isNaN(Number(value)) ? value : Number(value);
+        }
       }
       return parsedItem;
     });
 
     chartData = parsedChartData;
+
+    // Sort data by x-axis if it contains dates to ensure proper chronological order
+    if (chartData.length > 0 && chartData[0][`${chartConfig.xKey}_original`]) {
+      chartData.sort((a, b) => {
+        const aValue = a[`${chartConfig.xKey}_original`];
+        const bValue = b[`${chartConfig.xKey}_original`];
+
+        // Handle numeric timestamps
+        if (typeof aValue === "number" && typeof bValue === "number") {
+          return aValue - bValue;
+        }
+
+        // Handle string timestamps or dates
+        if (typeof aValue === "string" && typeof bValue === "string") {
+          const aNum = parseInt(aValue);
+          const bNum = parseInt(bValue);
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return aNum - bNum;
+          }
+          // Fall back to date parsing
+          return new Date(aValue).getTime() - new Date(bValue).getTime();
+        }
+
+        return 0;
+      });
+    }
 
     const processChartData = (data: Result[], chartType: string) => {
       if (chartType === "bar" || chartType === "pie") {
@@ -81,10 +129,16 @@ export function DynamicChart({
         return (
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey={chartConfig.xKey}>
+            <XAxis
+              dataKey={chartConfig.xKey}
+              tick={{ fontSize: 12 }}
+              angle={-45}
+              textAnchor="end"
+              height={80}
+            >
               <Label
                 value={toTitleCase(chartConfig.xKey)}
-                offset={0}
+                offset={-5}
                 position="insideBottom"
               />
             </XAxis>
@@ -109,25 +163,41 @@ export function DynamicChart({
       case "line":
         const { data, xAxisField, lineFields } = transformDataForMultiLineChart(
           chartData,
-          chartConfig,
+          chartConfig
         );
         const useTransformedData =
           chartConfig.multipleLines &&
           chartConfig.measurementColumn &&
           chartConfig.yKeys.includes(chartConfig.measurementColumn);
-        // console.log(useTransformedData, "useTransformedData");
-        // const useTransformedData = false;
+
+        // Custom tick formatter for dates
+        const formatXAxisTick = (value: any) => {
+          // If the value looks like a formatted date already, return it
+          if (
+            typeof value === "string" &&
+            /\d{1,2}\/\d{1,2}\/\d{4}/.test(value)
+          ) {
+            return value;
+          }
+          return value;
+        };
+
         return (
           <LineChart data={useTransformedData ? data : chartData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
               dataKey={useTransformedData ? chartConfig.xKey : chartConfig.xKey}
+              tick={{ fontSize: 12 }}
+              angle={-45}
+              textAnchor="end"
+              height={80}
+              tickFormatter={formatXAxisTick}
             >
               <Label
                 value={toTitleCase(
-                  useTransformedData ? xAxisField : chartConfig.xKey,
+                  useTransformedData ? xAxisField : chartConfig.xKey
                 )}
-                offset={0}
+                offset={-5}
                 position="insideBottom"
               />
             </XAxis>
@@ -163,7 +233,13 @@ export function DynamicChart({
         return (
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey={chartConfig.xKey} />
+            <XAxis
+              dataKey={chartConfig.xKey}
+              tick={{ fontSize: 12 }}
+              angle={-45}
+              textAnchor="end"
+              height={80}
+            />
             <YAxis />
             <ChartTooltip content={<ChartTooltipContent />} />
             {chartConfig.legend && <Legend />}
@@ -210,16 +286,13 @@ export function DynamicChart({
       <h2 className="text-lg font-bold mb-2">{chartConfig.title}</h2>
       {chartConfig && chartData.length > 0 && (
         <ChartContainer
-          config={chartConfig.yKeys.reduce(
-            (acc, key, index) => {
-              acc[key] = {
-                label: key,
-                color: colors[index % colors.length],
-              };
-              return acc;
-            },
-            {} as Record<string, { label: string; color: string }>,
-          )}
+          config={chartConfig.yKeys.reduce((acc, key, index) => {
+            acc[key] = {
+              label: key,
+              color: colors[index % colors.length],
+            };
+            return acc;
+          }, {} as Record<string, { label: string; color: string }>)}
           className="h-[320px] w-full"
         >
           {renderChart()}
