@@ -221,7 +221,7 @@ export const QueryViewer = ({
                   </div>
 
                   <div className="text-xs text-muted-foreground">
-                    Click "Explain Query" for SQL explanations
+                    Click &quot;Explain Query&quot; for SQL explanations
                   </div>
                 </div>
               </div>

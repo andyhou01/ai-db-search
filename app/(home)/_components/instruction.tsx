@@ -1,6 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
-import { Database, Bot, Sparkles, Brain } from "lucide-react";
+import { Database, Bot, Sparkles } from "lucide-react";
 
 const Instruction = () => {
   return (
@@ -22,7 +20,7 @@ const Instruction = () => {
         <h2 className="text-2xl font-bold">Welcome to Database Assistant</h2>
         <p className="text-muted-foreground">
           Select a database connection and ask questions about your data in
-          natural language. I'll generate and run SQL queries to find the
+          natural language. I&apos;ll generate and run SQL queries to find the
           answers you need.
         </p>
       </div>
