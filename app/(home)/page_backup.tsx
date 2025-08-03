@@ -14,7 +14,42 @@ import { Config, Result, AIAnswer } from "@/lib/types";
 import { Loader2, Send, User, Database } from "lucide-react";
 import { toast } from "sonner";
 import { Results } from "@/components/results";
-import { DynamicChart } from "@/components/dynamic-chart";
+import { QueryViewer } from "@/components/query-viewer";
+import { saveChatHistory } from "@/lib/chat-history";
+import { SqlErrorDisplay } from "@/components/SqlErrorDisplay";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import Instruction from "./_components/instruction";
+import Footer from "./_components/footer";
+import Header from "./_components/header"; 
+          ? { ...message, showData: !message.showData }
+          : message
+      )
+    );
+  };
+
+  const toggleQueryView = (messageId: string) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId 
+          ? { ...message, showQuery: !message.showQuery }
+          : message
+      )
+    );
+  };, AIAnswer } from "@/lib/types";
+import { Loader2, Send, User, Database } from "lucide-react";
+import { toast } from "sonner";
+import { Results } from "@/components/results";
 import { QueryViewer } from "@/components/query-viewer";
 import { saveChatHistory } from "@/lib/chat-history";
 import { SqlErrorDisplay } from "@/components/SqlErrorDisplay";
@@ -241,26 +276,19 @@ export default function Page() {
       });
 
       // Generate chart config
-      let generation;
-      try {
-        generation = await generateChartConfig(
-          results,
-          question || "Updated query"
-        );
-      } catch (error) {
-        console.error("Failed to generate chart config:", error);
-        // Continue without chart config if it fails
-      }
+      const generation = await generateChartConfig(
+        results,
+        question || "Updated query"
+      );
 
-      // Update system message with AI answer first, data hidden initially, charts visible by default
+      // Update system message with AI answer first, data hidden initially
       updateSystemMessage(systemMessageId, {
         content: aiAnswer ? "" : `Here are the results for: "${question}"`,
         aiAnswer,
         results,
         columns,
         chartConfig: generation?.config || null,
-        showData: false, // Hide data tables by default
-        showQuery: false, // Hide SQL query by default
+        showData: !aiAnswer, // Show data immediately if no AI answer
         loading: false,
       });
 
@@ -305,16 +333,6 @@ export default function Page() {
       prev.map((message) =>
         message.id === messageId
           ? { ...message, showData: !message.showData }
-          : message
-      )
-    );
-  };
-
-  const toggleQueryView = (messageId: string) => {
-    setMessages((prev) =>
-      prev.map((message) =>
-        message.id === messageId
-          ? { ...message, showQuery: !message.showQuery }
           : message
       )
     );
@@ -444,7 +462,7 @@ export default function Page() {
       <Header messages={messages} handleNewChat={handleNewChat} />
 
       {/* Scrollable chat area */}
-      <div className="flex flex-col w-full max-w-5xl h-[86vh] mt-16 overflow-y-auto p-8">
+      <div className="flex flex-col w-full max-w-4xl h-[86vh] mt-16 overflow-y-auto">
         <motion.div
           className="flex flex-col h-full"
           initial={{ opacity: 0 }}
@@ -504,7 +522,21 @@ export default function Page() {
                             </div>
                           ) : (
                             <div className="w-full space-y-4">
-                              {message.content && <p>{message.content}</p>}
+                              <p>{message.content}</p>
+
+                              {message.query && (
+                                <div className="mt-2">
+                                  <Badge variant="outline" className="mb-2">
+                                    SQL Query
+                                  </Badge>
+                                  <QueryViewer
+                                    activeQuery={message.query}
+                                    inputValue=""
+                                    connectionUrl={selectedConnection}
+                                    connectionName={selectedConnectionName}
+                                  />
+                                </div>
+                              )}
 
                               {message.sqlError && (
                                 <div className="mt-2">
@@ -619,20 +651,11 @@ export default function Page() {
                                           }
 
                                           // Generate chart config
-                                          let generation;
-                                          try {
-                                            generation =
-                                              await generateChartConfig(
-                                                results,
-                                                "Updated query"
-                                              );
-                                          } catch (error) {
-                                            console.error(
-                                              "Failed to generate chart config:",
-                                              error
+                                          const generation =
+                                            await generateChartConfig(
+                                              results,
+                                              "Updated query"
                                             );
-                                            // Continue without chart config if it fails
-                                          }
 
                                           // Update system message with results
                                           updateSystemMessage(
@@ -644,10 +667,8 @@ export default function Page() {
                                               aiAnswer,
                                               results,
                                               columns,
-                                              chartConfig:
-                                                generation?.config || null,
-                                              showData: false,
-                                              showQuery: false,
+                                              chartConfig: generation.config,
+                                              showData: !aiAnswer,
                                               loading: false,
                                             }
                                           );
@@ -669,26 +690,26 @@ export default function Page() {
 
                               {/* AI Answer Display */}
                               {message.aiAnswer && (
-                                <div className="mt-3">
-                                  <div className="bg-card border rounded-lg p-4 shadow-sm">
+                                <div className="mt-3 space-y-4">
+                                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
                                     <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-2 h-2 bg-primary rounded-full"></div>
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                                       <Badge
                                         variant="secondary"
-                                        className="bg-primary/10 text-primary"
+                                        className="bg-blue-100 text-blue-700"
                                       >
                                         AI Answer
                                       </Badge>
                                     </div>
                                     <div className="space-y-3">
-                                      <p className="text-foreground font-medium leading-relaxed">
+                                      <p className="text-gray-900 font-medium leading-relaxed">
                                         {message.aiAnswer.answer}
                                       </p>
 
                                       {message.aiAnswer.keyInsights.length >
                                         0 && (
                                         <div>
-                                          <h4 className="text-sm font-semibold text-muted-foreground mb-2">
+                                          <h4 className="text-sm font-semibold text-gray-700 mb-2">
                                             Key Insights:
                                           </h4>
                                           <ul className="space-y-1">
@@ -696,9 +717,9 @@ export default function Page() {
                                               (insight, index) => (
                                                 <li
                                                   key={index}
-                                                  className="flex items-start gap-2 text-sm text-muted-foreground"
+                                                  className="flex items-start gap-2 text-sm text-gray-600"
                                                 >
-                                                  <span className="text-primary mt-1">
+                                                  <span className="text-blue-500 mt-1">
                                                     •
                                                   </span>
                                                   <span>{insight}</span>
@@ -710,8 +731,8 @@ export default function Page() {
                                       )}
 
                                       {message.aiAnswer.summary && (
-                                        <div className="bg-muted/50 border-l-4 border-primary pl-3 py-2">
-                                          <p className="text-sm text-muted-foreground italic">
+                                        <div className="bg-blue-50 border-l-4 border-blue-300 pl-3 py-2">
+                                          <p className="text-sm text-gray-700 italic">
                                             {message.aiAnswer.summary}
                                           </p>
                                         </div>
@@ -725,79 +746,49 @@ export default function Page() {
                                         onClick={() =>
                                           toggleDataView(message.id)
                                         }
-                                        className="text-primary border-primary/30 hover:bg-primary/10"
+                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
                                       >
                                         {message.showData
-                                          ? "Hide Data Table"
-                                          : "Show Data Table"}
-                                      </Button>
-
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                          toggleQueryView(message.id)
-                                        }
-                                        className="text-primary border-primary/30 hover:bg-primary/10"
-                                      >
-                                        {message.showQuery
-                                          ? "Hide SQL Query"
-                                          : "Show SQL Query"}
+                                          ? "Hide Data"
+                                          : "View Data & Charts"}
                                       </Button>
                                     </div>
                                   </div>
                                 </div>
                               )}
 
-                              {/* Chart Display - Always visible if available */}
+                              {/* Data and Charts Display */}
                               {message.results &&
                                 message.results.length > 0 &&
                                 message.columns &&
-                                message.chartConfig && (
+                                (message.showData || !message.aiAnswer) && (
                                   <div className="mt-3">
                                     <Badge variant="outline" className="mb-2">
-                                      Visualization
-                                    </Badge>
-                                    <div className="border rounded-lg p-4">
-                                      <DynamicChart
-                                        chartData={message.results}
-                                        chartConfig={message.chartConfig}
-                                      />
-                                    </div>
-                                  </div>
-                                )}
-
-                              {/* Data Table Display - Only when toggled on */}
-                              {message.results &&
-                                message.results.length > 0 &&
-                                message.columns &&
-                                message.showData && (
-                                  <div className="mt-3">
-                                    <Badge variant="outline" className="mb-2">
-                                      Data Table
+                                      Results
                                     </Badge>
                                     <Results
                                       results={message.results}
-                                      chartConfig={message.chartConfig || null}
+                                      chartConfig={message.chartConfig ?? null}
                                       columns={message.columns}
                                     />
                                   </div>
                                 )}
 
-                              {/* Query Display - Only when toggled on */}
-                              {message.query && message.showQuery && (
-                                <div className="mt-2">
-                                  <Badge variant="outline" className="mb-2">
-                                    SQL Query
-                                  </Badge>
-                                  <QueryViewer
-                                    activeQuery={message.query}
-                                    inputValue=""
-                                    connectionUrl={selectedConnection}
-                                    connectionName={selectedConnectionName}
-                                  />
-                                </div>
-                              )}
+                              {/* Query Display - Only show when data is visible or no AI answer */}
+                              {message.query &&
+                                (message.showData || !message.aiAnswer) && (
+                                  <div className="mt-2">
+                                    <Badge variant="outline" className="mb-2">
+                                      SQL Query
+                                    </Badge>
+                                    <QueryViewer
+                                      activeQuery={message.query}
+                                      inputValue=""
+                                      connectionUrl={selectedConnection}
+                                      connectionName={selectedConnectionName}
+                                    />
+                                  </div>
+                                )}
                             </div>
                           )}
                         </div>
@@ -825,7 +816,7 @@ export default function Page() {
       </div>
 
       {/* Fixed input area at bottom */}
-      <div className="fixed z-20 w-full max-w-5xl bottom-0 bg-primary-foreground pt-2">
+      <div className="fixed z-20 w-full max-w-4xl bottom-0 bg-primary-foreground pt-2">
         <div className="flex gap-3 p-4 rounded-xl bg-background">
           <div className="flex items-center w-1/5">
             <Select

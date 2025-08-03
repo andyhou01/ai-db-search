@@ -14,7 +14,6 @@ import { Config, Result, AIAnswer } from "@/lib/types";
 import { Loader2, Send, User, Database } from "lucide-react";
 import { toast } from "sonner";
 import { Results } from "@/components/results";
-import { DynamicChart } from "@/components/dynamic-chart";
 import { QueryViewer } from "@/components/query-viewer";
 import { saveChatHistory } from "@/lib/chat-history";
 import { SqlErrorDisplay } from "@/components/SqlErrorDisplay";
@@ -444,7 +443,7 @@ export default function Page() {
       <Header messages={messages} handleNewChat={handleNewChat} />
 
       {/* Scrollable chat area */}
-      <div className="flex flex-col w-full max-w-5xl h-[86vh] mt-16 overflow-y-auto p-8">
+      <div className="flex flex-col w-full max-w-4xl h-[86vh] mt-16 overflow-y-auto">
         <motion.div
           className="flex flex-col h-full"
           initial={{ opacity: 0 }}
@@ -758,12 +757,11 @@ export default function Page() {
                                     <Badge variant="outline" className="mb-2">
                                       Visualization
                                     </Badge>
-                                    <div className="border rounded-lg p-4">
-                                      <DynamicChart
-                                        chartData={message.results}
-                                        chartConfig={message.chartConfig}
-                                      />
-                                    </div>
+                                    <Results
+                                      results={message.results}
+                                      chartConfig={message.chartConfig}
+                                      columns={message.columns}
+                                    />
                                   </div>
                                 )}
 
@@ -778,7 +776,7 @@ export default function Page() {
                                     </Badge>
                                     <Results
                                       results={message.results}
-                                      chartConfig={message.chartConfig || null}
+                                      chartConfig={null}
                                       columns={message.columns}
                                     />
                                   </div>
@@ -825,7 +823,7 @@ export default function Page() {
       </div>
 
       {/* Fixed input area at bottom */}
-      <div className="fixed z-20 w-full max-w-5xl bottom-0 bg-primary-foreground pt-2">
+      <div className="fixed z-20 w-full max-w-4xl bottom-0 bg-primary-foreground pt-2">
         <div className="flex gap-3 p-4 rounded-xl bg-background">
           <div className="flex items-center w-1/5">
             <Select
