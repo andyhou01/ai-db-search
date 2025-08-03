@@ -24,11 +24,11 @@ export default function Sidebar() {
       icon: BotMessageSquare,
       path: "/",
     },
-    {
-      name: "Query History",
-      icon: History,
-      path: "/history",
-    },
+    // {
+    //   name: "Query History",
+    //   icon: History,
+    //   path: "/history",
+    // },
     {
       name: "DB Connection",
       icon: Database,
@@ -62,7 +62,7 @@ export default function Sidebar() {
               >
                 <div className="relative">
                   <menu.icon
-                    className={`w-5 h-5 transition-all duration-200 ${
+                    className={`w-6 h-6 transition-all duration-200 ${
                       path === menu.path
                         ? "text-blue-600 dark:text-blue-400"
                         : "text-gray-500 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400"
@@ -72,7 +72,7 @@ export default function Sidebar() {
                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-pulse"></div>
                   )}
                 </div>
-                <span className="text-sm font-medium">{menu.name}</span>
+                <span className="text-md font-medium">{menu.name}</span>
                 {path === menu.path && (
                   <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-600 rounded-full absolute -left-0.5"></div>
                 )}
