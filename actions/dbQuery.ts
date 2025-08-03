@@ -653,13 +653,10 @@ export const runGenerateSQLQuery = async (
       const columnMatch = e.message.match(/column "([^"]+)" does not exist/);
       const columnName = columnMatch ? columnMatch[1] : "unknown column";
 
-      // Run validation again to get suggestions
-      const validation = await validateSqlQuery(query, connectionUrl);
-
       return {
         error: `Column '${columnName}' does not exist in the database schema.`,
-        suggestions: validation.suggestions || {},
-        validColumns: validation.validColumns || [],
+        suggestions: {},
+        validColumns: [],
       };
     } else if (
       e.message.includes("function") &&
@@ -813,9 +810,94 @@ export const explainQuery = async (
 // Helper function to sleep for a given number of milliseconds
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Generate AI-powered answer from query results
+export const generateAnswerFromResults = async (
+  userQuestion: string,
+  results: Result[],
+  maxRetries: number = 3
+) => {
+  "use server";
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { object: answer } = await generateObject({
+        model: openai("gpt-4o"),
+        system: `You are a data analyst expert. Your job is to analyze query results and provide clear, concise answers to business questions.
+
+        Guidelines for your responses:
+        1. Start with the direct answer to the user's question
+        2. Provide specific numbers, percentages, and trends when available
+        3. Highlight key insights and patterns in the data
+        4. Identify potential reasons for changes or anomalies if apparent from the data
+        5. Keep the response conversational and business-focused
+        6. If the data shows concerning trends, mention them
+        7. Suggest potential next steps or areas to investigate if relevant
+
+        Response format:
+        - Start with a clear answer sentence
+        - Follow with 2-3 bullet points of key insights
+        - End with a brief summary or recommendation if applicable`,
+        prompt: `Based on the following data, answer this question: "${userQuestion}"
+
+        Data Results:
+        ${JSON.stringify(results, null, 2)}
+
+        Data Summary:
+        - Total records: ${results.length}
+        - Columns: ${Object.keys(results[0] || {}).join(", ")}
+        
+        Please provide a clear, business-focused answer that directly addresses the user's question.`,
+        schema: z.object({
+          answer: z.string().describe("The main answer to the user's question"),
+          keyInsights: z
+            .array(z.string())
+            .describe("2-3 key insights from the data"),
+          summary: z.string().describe("Brief summary or recommendation"),
+        }),
+      });
+
+      return {
+        answer: answer.answer,
+        keyInsights: answer.keyInsights,
+        summary: answer.summary,
+      };
+    } catch (e: any) {
+      console.error(
+        `Answer generation attempt ${attempt + 1} failed:`,
+        e.message
+      );
+
+      // Check if it's a rate limit error
+      if (e.message && e.message.includes("Rate limit reached")) {
+        if (attempt < maxRetries - 1) {
+          // Extract wait time from error message, or use exponential backoff
+          const waitMatch = e.message.match(/try again in ([\d.]+)s/);
+          const waitTime = waitMatch
+            ? parseFloat(waitMatch[1]) * 1000
+            : Math.pow(2, attempt) * 1000;
+
+          console.log(
+            `Rate limit hit, waiting ${waitTime}ms before retry ${
+              attempt + 2
+            }/${maxRetries}`
+          );
+          await sleep(waitTime);
+          continue;
+        }
+      }
+
+      // If it's the last attempt or not a rate limit error, throw
+      if (attempt === maxRetries - 1) {
+        throw new Error("Failed to generate answer after multiple attempts");
+      }
+    }
+  }
+};
+
+// Generate chart configuration from query results
 export const generateChartConfig = async (
   results: Result[],
-  userQuery: string,
+  userQuestion: string,
   maxRetries: number = 3
 ) => {
   "use server";
@@ -824,62 +906,44 @@ export const generateChartConfig = async (
     try {
       const { object: config } = await generateObject({
         model: openai("gpt-4o"),
-        system: `You are a data visualization expert specializing in selecting the most appropriate chart types for different data patterns. Your goal is to create visualizations that effectively communicate insights while being accessible and easy to interpret.
+        system: `You are a data visualization expert. Your job is to analyze query results and create optimal chart configurations.
 
-Choose chart types based on these principles:
-- Bar charts for comparing discrete categories
-- Line charts for temporal trends or continuous data
-- Pie/donut charts only for showing composition when there are few categories
-- Scatter plots for showing correlation between two variables
-- Area charts for cumulative totals or part-to-whole relationships over time
-- Multi-series charts when comparing multiple related metrics
+        Guidelines for chart selection:
+        1. Bar charts: Good for comparing categories, showing rankings, or discrete values
+        2. Line charts: Best for time series data, trends over time, or continuous data
+        3. Area charts: Similar to line charts but better for showing cumulative data or parts of a whole over time
+        4. Pie charts: Use sparingly, only for showing parts of a whole with few categories (3-5 max)
 
-When dealing with date/time data:
-- Always use line or area charts for time series data
-- Ensure the x-axis field contains dates or timestamps
-- Consider the temporal nature of the data in your visualization choice
+        Chart configuration rules:
+        - Always choose the most appropriate chart type for the data
+        - For time series data, use line or area charts
+        - For categorical comparisons, use bar charts
+        - Set appropriate colors that are accessible and meaningful
+        - Create clear, descriptive titles
+        - Provide insightful takeaways about what the chart reveals
 
-Ensure your visualization choices prioritize clarity, minimize chart junk, and accurately represent the underlying data.`,
-        prompt: `Given the following data from a SQL query result, generate the chart config that best visualises the data and answers the users query.
-        For multiple groups use multi-lines.
+        When analyzing the data:
+        - Look at the column types and names to understand the data structure
+        - Identify time/date columns for x-axis in time series
+        - Identify categorical columns for grouping
+        - Identify numeric columns for measurements
+        - Consider the business context from the user question`,
+        prompt: `Based on the following query results, create an optimal chart configuration.
+
+        User Question: "${userQuestion}"
         
-        IMPORTANT: If the x-axis field contains dates, timestamps, or time-related data, make sure to use "line" or "area" chart types for better temporal visualization.
-
-        Here is an example complete config:
-        export const chartConfig = {
-          type: "line", // Use "line" for time series data
-          xKey: "day", // This should be the date/time field
-          yKeys: ["count"],
-          colors: {
-            count: "#4CAF50"
-          },
-          legend: true,
-          title: "UAE Sovereign Policies Compliance Changes Over a Week",
-          description: "Shows how compliance states changed day by day"
-        }
-
-        User Query:
-        ${userQuery}
-
-        Data Sample (first few rows):
+        Data Sample (first 5 rows):
         ${JSON.stringify(results.slice(0, 5), null, 2)}
         
-        Data Structure Analysis:
-        - Total rows: ${results.length}
-        - Column names: ${Object.keys(results[0] || {}).join(", ")}
-        - Sample values: ${Object.entries(results[0] || {})
-          .map(([key, value]) => `${key}: ${value}`)
-          .join(", ")}`,
+        Data Summary:
+        - Total records: ${results.length}
+        - Columns: ${Object.keys(results[0] || {}).join(", ")}
+        
+        Create a chart configuration that best visualizes this data and answers the user's question.`,
         schema: configSchema,
       });
 
-      const colors: Record<string, string> = {};
-      config.yKeys.forEach((key, index) => {
-        colors[key] = `hsl(var(--chart-${index + 1}))`;
-      });
-
-      const updatedConfig: Config = { ...config, colors };
-      return { config: updatedConfig };
+      return { config };
     } catch (e: any) {
       console.error(
         `Chart config generation attempt ${attempt + 1} failed:`,
@@ -908,321 +972,9 @@ Ensure your visualization choices prioritize clarity, minimize chart junk, and a
       // If it's the last attempt or not a rate limit error, throw
       if (attempt === maxRetries - 1) {
         throw new Error(
-          "Failed to generate chart suggestion after multiple attempts"
+          "Failed to generate chart config after multiple attempts"
         );
       }
     }
   }
 };
-
-// Helper function to validate SQL query against schema
-export const validateSqlQuery = async (
-  query: string,
-  connectionUrl: string,
-  connectionName?: string
-) => {
-  "use server";
-  try {
-    // Try to get schema from cached data first
-    let schema;
-    if (connectionName) {
-      const enhancedSchema = await loadEnhancedSchema(connectionName);
-      if (enhancedSchema) {
-        schema = enhancedSchema.basicSchema;
-        console.log(`Using cached schema for validation: ${connectionName}`);
-      }
-    }
-
-    // If no cached schema, get from database
-    if (!schema) {
-      console.log(
-        `No cached schema found for validation, fetching from database`
-      );
-      schema = await getDatabaseSchema(connectionUrl);
-    }
-
-    if (!schema) {
-      return { isValid: false, error: "Could not retrieve database schema" };
-    }
-
-    // Filter out SQL keywords, functions, and aliases
-    const sqlKeywords = [
-      "select",
-      "from",
-      "where",
-      "group",
-      "by",
-      "having",
-      "order",
-      "limit",
-      "offset",
-      "join",
-      "inner",
-      "outer",
-      "left",
-      "right",
-      "on",
-      "as",
-      "and",
-      "or",
-      "not",
-      "in",
-      "between",
-      "like",
-      "is",
-      "null",
-      "asc",
-      "desc",
-      "distinct",
-      "case",
-      "when",
-      "then",
-      "else",
-      "end",
-      "count",
-      "sum",
-      "avg",
-      "min",
-      "max",
-      "lower",
-    ];
-
-    // Common SQL functions that shouldn't be treated as column references
-    const sqlFunctions = [
-      "date_trunc",
-      "date_part",
-      "extract",
-      "to_char",
-      "to_date",
-      "to_timestamp",
-      "coalesce",
-      "nullif",
-      "greatest",
-      "least",
-      "concat",
-      "substring",
-      "trim",
-      "upper",
-      "lower",
-      "initcap",
-      "length",
-      "replace",
-      "round",
-      "ceil",
-      "floor",
-      "abs",
-      "random",
-      "now",
-      "current_date",
-      "current_time",
-      "current_timestamp",
-      "date",
-      "time",
-      "timestamp",
-      "interval",
-      "cast",
-      "row_number",
-      "rank",
-      "dense_rank",
-      "lag",
-      "lead",
-      "first_value",
-      "last_value",
-      "nth_value",
-      "string_agg",
-      "array_agg",
-      "json_agg",
-      "json_build_object",
-      "json_build_array",
-      "jsonb_build_object",
-      "jsonb_build_array",
-    ];
-
-    // Common function parameters that shouldn't be treated as column references
-    const commonFunctionParams = [
-      "year",
-      "month",
-      "day",
-      "hour",
-      "minute",
-      "second",
-      "millisecond",
-      "quarter",
-      "week",
-      "decade",
-      "century",
-      "millennium",
-      "isoyear",
-      "epoch",
-      "microseconds",
-      "timezone",
-    ];
-
-    // Pre-process the query to handle function parameters
-    // This will temporarily replace function calls and their parameters to avoid false positives
-    let processedQuery = query;
-    const functionCalls: string[] = [];
-
-    // Find and extract function calls with their parameters
-    const functionPattern = /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(\s*([^)]*)\s*\)/g;
-    let match;
-    let index = 0;
-
-    while ((match = functionPattern.exec(query)) !== null) {
-      const fullMatch = match[0];
-      const funcName = match[1];
-      const params = match[2];
-
-      // Skip if it's not a known SQL function
-      if (!sqlFunctions.includes(funcName.toLowerCase())) continue;
-
-      // Replace the function call with a placeholder
-      const placeholder = `__FUNC_${index}__`;
-      processedQuery = processedQuery.replace(fullMatch, placeholder);
-      functionCalls.push(fullMatch);
-      index++;
-    }
-
-    // Extract all column references from the processed query
-    const columnMatches =
-      processedQuery.match(
-        /\b[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*\b|\b[a-zA-Z_][a-zA-Z0-9_]*\b/g
-      ) || [];
-
-    // Extract table names from the query
-    const fromMatch = query.match(/\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)/i);
-    const tableNames = fromMatch ? [fromMatch[1].toLowerCase()] : [];
-
-    // Add tables from joins
-    const joinMatches = query.match(/\bjoin\s+([a-zA-Z_][a-zA-Z0-9_]*)/gi);
-    if (joinMatches) {
-      joinMatches.forEach((match) => {
-        const tableName = match.replace(/\bjoin\s+/i, "").toLowerCase();
-        if (!tableNames.includes(tableName)) {
-          tableNames.push(tableName);
-        }
-      });
-    }
-
-    // Check if tables exist
-    const invalidTables = tableNames.filter(
-      (tableName) =>
-        !schema.tables.some(
-          (table: any) => table.name.toLowerCase() === tableName
-        )
-    );
-
-    if (invalidTables.length > 0) {
-      return {
-        isValid: false,
-        error: `Table(s) not found: ${invalidTables.join(", ")}`,
-        suggestedTables: schema.tables.map((t) => t.name),
-      };
-    }
-
-    // Get all valid column names from the schema for the tables in the query
-    const validColumns = new Set<string>();
-    schema.tables.forEach((table: any) => {
-      if (tableNames.includes(table.name.toLowerCase())) {
-        table.columns.forEach((column: any) => {
-          validColumns.add(column.name.toLowerCase());
-          // Also add table.column format
-          validColumns.add(
-            `${table.name.toLowerCase()}.${column.name.toLowerCase()}`
-          );
-        });
-      }
-    });
-
-    // Check each potential column reference
-    const potentialColumns = columnMatches
-      .filter((col) => !sqlKeywords.includes(col.toLowerCase()))
-      .filter((col) => !sqlFunctions.includes(col.toLowerCase()))
-      .filter((col) => !commonFunctionParams.includes(col.toLowerCase())) // Filter out common function parameters
-      .filter((col) => !col.includes("(")) // Filter out function calls
-      .filter((col) => !col.startsWith("__FUNC_")) // Filter out our function placeholders
-      .map((col) => col.toLowerCase());
-
-    const invalidColumns = potentialColumns.filter((col) => {
-      // Skip checking table aliases and table names
-      if (tableNames.includes(col)) return false;
-
-      // Skip checking aliases defined in the query with "AS"
-      const asPattern = new RegExp(`\\bas\\s+${col}\\b`, "i");
-      if (query.match(asPattern)) return false;
-
-      // Skip string literals (values in quotes)
-      const stringLiteralPattern = new RegExp(`['"]${col}['"]`);
-      if (query.match(stringLiteralPattern)) return false;
-
-      return !validColumns.has(col);
-    });
-
-    if (invalidColumns.length > 0) {
-      // Get suggestions for each invalid column
-      const suggestions: Record<string, string[]> = {};
-
-      invalidColumns.forEach((invalidCol) => {
-        // Simple suggestion based on string similarity
-        const allColumns = Array.from(validColumns);
-        const similarColumns = allColumns
-          .filter((validCol) => {
-            const simpleValidCol = validCol.includes(".")
-              ? validCol.split(".")[1]
-              : validCol;
-            return (
-              simpleValidCol.length > 2 &&
-              (invalidCol.includes(simpleValidCol) ||
-                simpleValidCol.includes(invalidCol) ||
-                levenshteinDistance(invalidCol, simpleValidCol) <= 3)
-            );
-          })
-          .slice(0, 3); // Limit to top 3 suggestions
-
-        suggestions[invalidCol] = similarColumns;
-      });
-
-      return {
-        isValid: false,
-        error: `Invalid column(s): ${invalidColumns.join(", ")}`,
-        suggestions,
-        validColumns: Array.from(validColumns),
-      };
-    }
-
-    return { isValid: true };
-  } catch (e: any) {
-    console.error("Error validating SQL query:", e);
-    return { isValid: false, error: `Error validating query: ${e.message}` };
-  }
-};
-
-// Levenshtein distance for string similarity
-function levenshteinDistance(a: string, b: string): number {
-  const matrix: number[][] = [];
-
-  // Initialize matrix
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j;
-  }
-
-  // Fill matrix
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1, // insertion
-          matrix[i - 1][j] + 1 // deletion
-        );
-      }
-    }
-  }
-
-  return matrix[b.length][a.length];
-}

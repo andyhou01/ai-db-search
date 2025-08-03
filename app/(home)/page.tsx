@@ -8,8 +8,9 @@ import {
   runGenerateSQLQuery,
   getDatabaseSchema,
   loadEnhancedSchema,
+  generateAnswerFromResults,
 } from "@/actions/dbQuery";
-import { Config, Result } from "@/lib/types";
+import { Config, Result, AIAnswer } from "@/lib/types";
 import { Loader2, Send, User, Database } from "lucide-react";
 import { toast } from "sonner";
 import { Results } from "@/components/results";
@@ -44,6 +45,8 @@ interface Message {
   results?: Result[];
   columns?: string[];
   chartConfig?: Config | null;
+  aiAnswer?: AIAnswer;
+  showData?: boolean;
   loading?: boolean;
   loadingStep?: number;
   sqlError?: {
@@ -216,18 +219,39 @@ export default function Page() {
       const results = queryExecutionResult as Result[];
       const columns = results.length > 0 ? Object.keys(results[0]) : [];
 
+      // Update to step 3 - generating AI answer
+      updateSystemMessage(systemMessageId, {
+        loadingStep: 3,
+      });
+
+      // Generate AI answer from results
+      let aiAnswer: AIAnswer | undefined;
+      try {
+        aiAnswer = await generateAnswerFromResults(question, results);
+      } catch (error) {
+        console.error("Failed to generate AI answer:", error);
+        // Continue without AI answer if it fails
+      }
+
+      // Update to step 4 - generating chart config
+      updateSystemMessage(systemMessageId, {
+        loadingStep: 4,
+      });
+
       // Generate chart config
       const generation = await generateChartConfig(
         results,
         question || "Updated query"
       );
 
-      // Update system message with results
+      // Update system message with AI answer first, data hidden initially
       updateSystemMessage(systemMessageId, {
-        content: `Here are the results for: "${question}"`,
+        content: aiAnswer ? "" : `Here are the results for: "${question}"`,
+        aiAnswer,
         results,
         columns,
-        chartConfig: generation.config,
+        chartConfig: generation?.config || null,
+        showData: !aiAnswer, // Show data immediately if no AI answer
         loading: false,
       });
 
@@ -263,6 +287,16 @@ export default function Page() {
     setMessages((prev) =>
       prev.map((message) =>
         message.id === id ? { ...message, ...updates } : message
+      )
+    );
+  };
+
+  const toggleDataView = (messageId: string) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
+          ? { ...message, showData: !message.showData }
+          : message
       )
     );
   };
@@ -442,7 +476,11 @@ export default function Page() {
                               <p>
                                 {message.loadingStep === 1
                                   ? "Generating SQL query..."
-                                  : "Running SQL query..."}
+                                  : message.loadingStep === 2
+                                  ? "Running SQL query..."
+                                  : message.loadingStep === 3
+                                  ? "Generating AI answer..."
+                                  : "Creating visualizations..."}
                               </p>
                             </div>
                           ) : (
@@ -559,6 +597,22 @@ export default function Page() {
                                               ? Object.keys(results[0])
                                               : [];
 
+                                          // Generate AI answer from results
+                                          let aiAnswer: AIAnswer | undefined;
+                                          try {
+                                            aiAnswer =
+                                              await generateAnswerFromResults(
+                                                "Updated query",
+                                                results
+                                              );
+                                          } catch (error) {
+                                            console.error(
+                                              "Failed to generate AI answer:",
+                                              error
+                                            );
+                                            // Continue without AI answer if it fails
+                                          }
+
                                           // Generate chart config
                                           const generation =
                                             await generateChartConfig(
@@ -570,10 +624,14 @@ export default function Page() {
                                           updateSystemMessage(
                                             newSystemMessageId,
                                             {
-                                              content: `Here are the results for the updated query:`,
+                                              content: aiAnswer
+                                                ? ""
+                                                : `Here are the results for the updated query:`,
+                                              aiAnswer,
                                               results,
                                               columns,
                                               chartConfig: generation.config,
+                                              showData: !aiAnswer,
                                               loading: false,
                                             }
                                           );
@@ -593,9 +651,80 @@ export default function Page() {
                                 </div>
                               )}
 
+                              {/* AI Answer Display */}
+                              {message.aiAnswer && (
+                                <div className="mt-3 space-y-4">
+                                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-blue-100 text-blue-700"
+                                      >
+                                        AI Answer
+                                      </Badge>
+                                    </div>
+                                    <div className="space-y-3">
+                                      <p className="text-gray-900 font-medium leading-relaxed">
+                                        {message.aiAnswer.answer}
+                                      </p>
+
+                                      {message.aiAnswer.keyInsights.length >
+                                        0 && (
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                                            Key Insights:
+                                          </h4>
+                                          <ul className="space-y-1">
+                                            {message.aiAnswer.keyInsights.map(
+                                              (insight, index) => (
+                                                <li
+                                                  key={index}
+                                                  className="flex items-start gap-2 text-sm text-gray-600"
+                                                >
+                                                  <span className="text-blue-500 mt-1">
+                                                    •
+                                                  </span>
+                                                  <span>{insight}</span>
+                                                </li>
+                                              )
+                                            )}
+                                          </ul>
+                                        </div>
+                                      )}
+
+                                      {message.aiAnswer.summary && (
+                                        <div className="bg-blue-50 border-l-4 border-blue-300 pl-3 py-2">
+                                          <p className="text-sm text-gray-700 italic">
+                                            {message.aiAnswer.summary}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="mt-4 flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          toggleDataView(message.id)
+                                        }
+                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                      >
+                                        {message.showData
+                                          ? "Hide Data"
+                                          : "View Data & Charts"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Data and Charts Display */}
                               {message.results &&
                                 message.results.length > 0 &&
-                                message.columns && (
+                                message.columns &&
+                                (message.showData || !message.aiAnswer) && (
                                   <div className="mt-3">
                                     <Badge variant="outline" className="mb-2">
                                       Results
@@ -604,6 +733,22 @@ export default function Page() {
                                       results={message.results}
                                       chartConfig={message.chartConfig ?? null}
                                       columns={message.columns}
+                                    />
+                                  </div>
+                                )}
+
+                              {/* Query Display - Only show when data is visible or no AI answer */}
+                              {message.query &&
+                                (message.showData || !message.aiAnswer) && (
+                                  <div className="mt-2">
+                                    <Badge variant="outline" className="mb-2">
+                                      SQL Query
+                                    </Badge>
+                                    <QueryViewer
+                                      activeQuery={message.query}
+                                      inputValue=""
+                                      connectionUrl={selectedConnection}
+                                      connectionName={selectedConnectionName}
                                     />
                                   </div>
                                 )}
