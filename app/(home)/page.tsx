@@ -9,6 +9,7 @@ import {
   getDatabaseSchema,
   loadEnhancedSchema,
   generateAnswerFromResults,
+  shouldVisualizeData,
 } from "@/actions/dbQuery";
 import { Config, Result, AIAnswer } from "@/lib/types";
 import {
@@ -231,22 +232,49 @@ export default function Page() {
         loadingStep: 4,
       });
 
-      // Generate chart config
+      // Determine if data should be visualized
       let generation;
+      let visualizationDecision;
       try {
-        generation = await generateChartConfig(
-          results,
-          question || "Updated query"
+        visualizationDecision = await shouldVisualizeData(
+          question || "Updated query",
+          results
         );
+
+        console.log("Visualization decision:", visualizationDecision);
+
+        // Only generate chart config if visualization is appropriate
+        if (visualizationDecision.shouldVisualize) {
+          generation = await generateChartConfig(
+            results,
+            question || "Updated query"
+          );
+        }
       } catch (error) {
-        console.error("Failed to generate chart config:", error);
+        console.error(
+          "Failed to determine visualization or generate chart config:",
+          error
+        );
         // Continue without chart config if it fails
       }
 
       // Update system message with AI answer first, data hidden initially, charts visible by default
       updateSystemMessage(systemMessageId, {
         content: aiAnswer ? "" : `Here are the results for: "${question}"`,
-        aiAnswer,
+        aiAnswer: aiAnswer
+          ? {
+              ...aiAnswer,
+              summary:
+                aiAnswer.summary +
+                (visualizationDecision
+                  ? `\n\n📊 Visualization: ${
+                      visualizationDecision.shouldVisualize
+                        ? "Enabled"
+                        : "Not needed"
+                    } - ${visualizationDecision.reason}`
+                  : ""),
+            }
+          : undefined,
         results,
         columns,
         chartConfig: generation?.config || null,
@@ -518,17 +546,34 @@ export default function Page() {
                                             // Continue without AI answer if it fails
                                           }
 
-                                          // Generate chart config
+                                          // Determine if data should be visualized
                                           let generation;
+                                          let visualizationDecision;
                                           try {
-                                            generation =
-                                              await generateChartConfig(
-                                                results,
-                                                "Updated query"
+                                            visualizationDecision =
+                                              await shouldVisualizeData(
+                                                "Updated query",
+                                                results
                                               );
+
+                                            console.log(
+                                              "Visualization decision for updated query:",
+                                              visualizationDecision
+                                            );
+
+                                            // Only generate chart config if visualization is appropriate
+                                            if (
+                                              visualizationDecision.shouldVisualize
+                                            ) {
+                                              generation =
+                                                await generateChartConfig(
+                                                  results,
+                                                  "Updated query"
+                                                );
+                                            }
                                           } catch (error) {
                                             console.error(
-                                              "Failed to generate chart config:",
+                                              "Failed to determine visualization or generate chart config:",
                                               error
                                             );
                                             // Continue without chart config if it fails
@@ -541,7 +586,22 @@ export default function Page() {
                                               content: aiAnswer
                                                 ? ""
                                                 : `Here are the results for the updated query:`,
-                                              aiAnswer,
+                                              aiAnswer: aiAnswer
+                                                ? {
+                                                    ...aiAnswer,
+                                                    summary:
+                                                      aiAnswer.summary +
+                                                      (visualizationDecision
+                                                        ? `\n\n📊 Visualization: ${
+                                                            visualizationDecision.shouldVisualize
+                                                              ? "Enabled"
+                                                              : "Not needed"
+                                                          } - ${
+                                                            visualizationDecision.reason
+                                                          }`
+                                                        : ""),
+                                                  }
+                                                : undefined,
                                               results,
                                               columns,
                                               chartConfig:

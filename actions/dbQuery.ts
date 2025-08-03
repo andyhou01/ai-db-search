@@ -1,18 +1,24 @@
 "use server";
 
-import { Config, configSchema, explanationsSchema, Result } from "@/lib/types";
+import { Result } from "@/lib/types";
 import {
   DatabaseSchema,
   EnhancedDatabaseSchema,
   TableSummary,
   ColumnSummary,
 } from "@/types/dataBase";
-import { openai } from "@ai-sdk/openai";
+import { AzureOpenAI } from "openai";
 import { Client } from "pg";
-import { generateObject } from "ai";
-import { z } from "zod";
 import fs from "fs/promises";
 import path from "path";
+
+// Create Azure OpenAI client
+const client = new AzureOpenAI({
+  endpoint: process.env.AZURE_OPENAI_ENDPOINT!,
+  apiKey: process.env.AZURE_OPENAI_API_KEY!,
+  deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
+  apiVersion: process.env.AZURE_OPENAI_API_VERSION || "2025-01-01-preview",
+});
 
 // Helper function to get SQL client with connection URL
 const getSqlClient = (connectionUrl: string) => {
@@ -477,11 +483,16 @@ export const generateQuery = async (
         });
       }
 
-      const result = await generateObject({
-        model: openai("gpt-4o"),
-        system: `You are a SQL (postgres) and data visualization expert. Your job is to help the user write a SQL query to retrieve the data they need. The table schema is as follows:
+      const response = await client.chat.completions.create({
+        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a SQL (postgres) and data visualization expert. Your job is to help the user write a SQL query to retrieve the data they need. The table schema is as follows:
 
-    ${schemaToUse}${additionalContext}
+    ${schemaToUse}
+    
+    ${additionalContext}
 
     Only retrieval queries are allowed. Do not generate queries that modify data.
 
@@ -521,34 +532,102 @@ export const generateQuery = async (
 
     EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single value, include a relevant grouping dimension or return a count alongside it.
     
-    IMPORTANT: Always include a LIMIT clause in your query to prevent returning too many rows. Use LIMIT ${defaultLimit} by default unless the user specifically asks for more or fewer results.`,
-        prompt: `Generate the query necessary to retrieve the data the user wants: ${input}`,
-        schema: z.object({
-          query: z.string(),
-          validation: z
-            .object({
-              isValid: z.boolean(),
-              issues: z.array(z.string()).optional(),
-            })
-            .optional(),
-        }),
+    IMPORTANT: Always include a LIMIT clause in your query to prevent returning too many rows. Use LIMIT ${defaultLimit} by default unless the user specifically asks for more or fewer results.
+
+    You must respond with a valid JSON object containing a "query" field with the SQL query. Do not include any markdown formatting, code blocks, or additional text. Return only the JSON object.
+    
+    Example response format:
+    {"query": "SELECT column1, COUNT(*) FROM table GROUP BY column1 LIMIT 100"}`,
+          },
+          {
+            role: "user",
+            content: `Generate the query necessary to retrieve the data the user wants: ${input}`,
+          },
+        ],
+        max_tokens: 4096,
+        temperature: 0.1,
+        top_p: 1,
       });
 
-      // If validation is provided and there are issues, return structured error info instead of throwing
-      if (result.object.validation && !result.object.validation.isValid) {
-        const issues = result.object.validation.issues || [
-          "Unknown column name issue",
-        ];
-        return {
-          error: true,
-          message: `SQL query validation failed: ${issues.join(", ")}`,
-          issues: issues,
-          query: result.object.query, // Include the generated query for reference
-        };
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from Azure OpenAI");
       }
 
+      // console.log("Raw AI response:", content); // Debug logging
+
+      // Parse the JSON response
+      let parsedResponse;
+      try {
+        // Clean the content to remove any markdown formatting
+        let cleanContent = content.trim();
+
+        // Remove markdown code blocks if present
+        if (
+          cleanContent.startsWith("```json") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(7, -3).trim();
+        } else if (
+          cleanContent.startsWith("```") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(3, -3).trim();
+        }
+
+        parsedResponse = JSON.parse(cleanContent);
+      } catch (e) {
+        console.warn(
+          "Failed to parse JSON response, trying alternative extraction methods"
+        );
+
+        // If JSON parsing fails, try to extract SQL from the response
+        const sqlMatch = content.match(/```sql\n([\s\S]*?)\n```/);
+        if (sqlMatch) {
+          parsedResponse = { query: sqlMatch[1].trim() };
+        } else {
+          // Try to find a JSON object in the response
+          const jsonMatch = content.match(/\{[\s\S]*"query"[\s\S]*?\}/);
+          if (jsonMatch) {
+            try {
+              parsedResponse = JSON.parse(jsonMatch[0]);
+            } catch (jsonError) {
+              // Try to find SELECT statement in the response
+              const selectMatch = content.match(
+                /SELECT[\s\S]*?(?=LIMIT\s+\d+|;|$)/i
+              );
+              if (selectMatch) {
+                let query = selectMatch[0].trim();
+                // Clean up any trailing characters that might be causing issues
+                query = query.replace(/["}\s]*$/, "");
+                parsedResponse = { query: query };
+              } else {
+                throw new Error("Could not parse SQL query from response");
+              }
+            }
+          } else {
+            throw new Error("Could not find valid JSON or SQL in response");
+          }
+        }
+      }
+
+      if (!parsedResponse.query) {
+        throw new Error("No query found in response");
+      } // Clean the query to remove any trailing artifacts
+      let cleanQuery = parsedResponse.query.trim();
+      // console.log("Query before cleaning:", JSON.stringify(cleanQuery)); // Debug logging
+
+      // Remove any trailing quotes, braces, or backticks that might have been included
+      cleanQuery = cleanQuery.replace(/["}`\s]*$/, "");
+      // Remove any leading quotes or backticks
+      cleanQuery = cleanQuery.replace(/^["}`\s]*/, "");
+
+      // console.log("Query after cleaning:", JSON.stringify(cleanQuery)); // Debug logging
+
+      parsedResponse.query = cleanQuery;
+
       // Ensure the query has a LIMIT clause
-      const finalQuery = await ensureQueryHasLimit(result.object.query);
+      const finalQuery = await ensureQueryHasLimit(parsedResponse.query);
 
       return { error: false, query: finalQuery };
     } catch (e: any) {
@@ -767,12 +846,12 @@ export const explainQuery = async (
         additionalContext = additionalContext.slice(0, -2); // Remove trailing comma
       }
 
-      const result = await generateObject({
-        model: openai("gpt-4o"),
-        schema: z.object({
-          explanations: explanationsSchema,
-        }),
-        system: `You are a SQL (postgres) expert. Your job is to explain SQL queries in a clear, concise manner that helps users understand how the query works. The database schema is as follows:
+      const response = await client.chat.completions.create({
+        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a SQL (postgres) expert. Your job is to explain SQL queries in a clear, concise manner that helps users understand how the query works. The database schema is as follows:
       ${schemaToUse}${additionalContext}
 
       Break down your explanation into logical sections of the query. For each section:
@@ -781,17 +860,88 @@ export const explainQuery = async (
       3. If a section doesn't need explanation, include it but leave the explanation empty
 
       Focus on helping non-technical users understand the query logic without getting into advanced SQL concepts unless necessary.
-      `,
-        prompt: `Explain the SQL query you generated to retrieve the data the user wanted. Assume the user is not an expert in SQL. Break down the query into steps. Be concise.
+
+      You must respond with a valid JSON object containing an "explanations" array with objects having "section" and "explanation" fields. Do not include any markdown formatting, code blocks, or additional text. Return only the JSON object.
+      
+      Example response format:
+      {"explanations": [{"section": "SELECT column1, COUNT(*)", "explanation": "This selects the column and counts records"}]}`,
+          },
+          {
+            role: "user",
+            content: `Explain the SQL query you generated to retrieve the data the user wanted. Assume the user is not an expert in SQL. Break down the query into steps. Be concise.
 
         User Query:
         ${input}
 
         Generated SQL Query:
         ${sqlQuery}`,
+          },
+        ],
+        max_tokens: 4096,
+        temperature: 0.1,
+        top_p: 1,
       });
 
-      return result.object;
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from Azure OpenAI");
+      }
+
+      // console.log("Raw AI response for explanation:", content); // Debug logging
+
+      // Parse the JSON response with better error handling
+      let parsedResponse;
+      try {
+        // Clean the content to remove any markdown formatting
+        let cleanContent = content.trim();
+
+        // Remove markdown code blocks if present
+        if (
+          cleanContent.startsWith("```json") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(7, -3).trim();
+        } else if (
+          cleanContent.startsWith("```") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(3, -3).trim();
+        }
+
+        parsedResponse = JSON.parse(cleanContent);
+      } catch (e) {
+        console.warn(
+          "Failed to parse JSON response for explanation, trying to extract JSON"
+        );
+
+        // Try to find a JSON object in the response
+        const jsonMatch = content.match(
+          /\{[\s\S]*"explanations"[\s\S]*?\}(?=\s*$|\s*\n|$)/
+        );
+        if (jsonMatch) {
+          try {
+            parsedResponse = JSON.parse(jsonMatch[0]);
+          } catch (jsonError) {
+            // Try a broader match
+            const broadMatch = content.match(/\{[^}]*"explanations"[^}]*\}/);
+            if (broadMatch) {
+              try {
+                parsedResponse = JSON.parse(broadMatch[0]);
+              } catch (broadError) {
+                throw new Error(
+                  "Could not parse explanation JSON from response"
+                );
+              }
+            } else {
+              throw new Error("Could not parse explanation JSON from response");
+            }
+          }
+        } else {
+          throw new Error("Could not find valid JSON in explanation response");
+        }
+      }
+
+      return parsedResponse;
     } catch (e: any) {
       console.error(
         `Query explanation attempt ${attempt + 1} failed:`,
@@ -840,9 +990,12 @@ export const generateAnswerFromResults = async (
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const { object: answer } = await generateObject({
-        model: openai("gpt-4o"),
-        system: `You are a data analyst expert. Your job is to analyze query results and provide clear, concise answers to business questions.
+      const response = await client.chat.completions.create({
+        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a data analyst expert. Your job is to analyze query results and provide clear, concise answers to business questions.
 
         Guidelines for your responses:
         1. Start with the direct answer to the user's question
@@ -856,8 +1009,16 @@ export const generateAnswerFromResults = async (
         Response format:
         - Start with a clear answer sentence
         - Follow with 2-3 bullet points of key insights
-        - End with a brief summary or recommendation if applicable`,
-        prompt: `Based on the following data, answer this question: "${userQuestion}"
+        - End with a brief summary or recommendation if applicable
+
+        You must respond with a valid JSON object containing "answer", "keyInsights" (array), and "summary" fields. Do not include any markdown formatting, code blocks, or additional text. Return only the JSON object.
+        
+        Example response format:
+        {"answer": "Main answer", "keyInsights": ["Insight 1", "Insight 2"], "summary": "Summary text"}`,
+          },
+          {
+            role: "user",
+            content: `Based on the following data, answer this question: "${userQuestion}"
 
         Data Results:
         ${JSON.stringify(results, null, 2)}
@@ -867,19 +1028,74 @@ export const generateAnswerFromResults = async (
         - Columns: ${Object.keys(results[0] || {}).join(", ")}
         
         Please provide a clear, business-focused answer that directly addresses the user's question.`,
-        schema: z.object({
-          answer: z.string().describe("The main answer to the user's question"),
-          keyInsights: z
-            .array(z.string())
-            .describe("2-3 key insights from the data"),
-          summary: z.string().describe("Brief summary or recommendation"),
-        }),
+          },
+        ],
+        max_tokens: 4096,
+        temperature: 0.1,
+        top_p: 1,
       });
 
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from Azure OpenAI");
+      }
+
+      // console.log("Raw AI response for answer generation:", content); // Debug logging
+
+      // Parse the JSON response with better error handling
+      let parsedResponse;
+      try {
+        // Clean the content to remove any markdown formatting
+        let cleanContent = content.trim();
+
+        // Remove markdown code blocks if present
+        if (
+          cleanContent.startsWith("```json") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(7, -3).trim();
+        } else if (
+          cleanContent.startsWith("```") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(3, -3).trim();
+        }
+
+        parsedResponse = JSON.parse(cleanContent);
+      } catch (e) {
+        console.warn(
+          "Failed to parse JSON response for answer generation, trying to extract JSON"
+        );
+
+        // Try to find a JSON object in the response
+        const jsonMatch = content.match(
+          /\{[\s\S]*"answer"[\s\S]*?\}(?=\s*$|\s*\n|$)/
+        );
+        if (jsonMatch) {
+          try {
+            parsedResponse = JSON.parse(jsonMatch[0]);
+          } catch (jsonError) {
+            // Try a broader match
+            const broadMatch = content.match(/\{[^}]*"answer"[^}]*\}/);
+            if (broadMatch) {
+              try {
+                parsedResponse = JSON.parse(broadMatch[0]);
+              } catch (broadError) {
+                throw new Error("Could not parse answer JSON from response");
+              }
+            } else {
+              throw new Error("Could not parse answer JSON from response");
+            }
+          }
+        } else {
+          throw new Error("Could not find valid JSON in answer response");
+        }
+      }
+
       return {
-        answer: answer.answer,
-        keyInsights: answer.keyInsights,
-        summary: answer.summary,
+        answer: parsedResponse.answer,
+        keyInsights: parsedResponse.keyInsights,
+        summary: parsedResponse.summary,
       };
     } catch (e: any) {
       console.error(
@@ -924,9 +1140,12 @@ export const generateChartConfig = async (
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const { object: config } = await generateObject({
-        model: openai("gpt-4o"),
-        system: `You are a data visualization expert. Your job is to analyze query results and create optimal chart configurations.
+      const response = await client.chat.completions.create({
+        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a data visualization expert. Your job is to analyze query results and create optimal chart configurations.
 
         Guidelines for chart selection:
         1. Bar charts: Good for comparing categories, showing rankings, or discrete values
@@ -947,8 +1166,24 @@ export const generateChartConfig = async (
         - Identify time/date columns for x-axis in time series
         - Identify categorical columns for grouping
         - Identify numeric columns for measurements
-        - Consider the business context from the user question`,
-        prompt: `Based on the following query results, create an optimal chart configuration.
+        - Consider the business context from the user question
+
+        You must respond with a valid JSON object containing chart configuration with these exact fields:
+        - "type": one of "bar", "line", "area", "pie"
+        - "title": descriptive chart title
+        - "xKey": the column name for x-axis/categories
+        - "yKeys": array of column names for y-axis values (e.g., ["count", "total"])
+        - "description": brief description of what the chart shows
+        - "legend": boolean indicating if legend should be shown
+        
+        Do not include any markdown formatting, code blocks, or additional text. Return only the JSON object.
+        
+        Example response format:
+        {"type": "bar", "title": "Sales by Region", "xKey": "region", "yKeys": ["sales_count"], "description": "Shows sales distribution across regions", "legend": true}`,
+          },
+          {
+            role: "user",
+            content: `Based on the following query results, create an optimal chart configuration.
 
         User Question: "${userQuestion}"
         
@@ -960,10 +1195,123 @@ export const generateChartConfig = async (
         - Columns: ${Object.keys(results[0] || {}).join(", ")}
         
         Create a chart configuration that best visualizes this data and answers the user's question.`,
-        schema: configSchema,
+          },
+        ],
+        max_tokens: 4096,
+        temperature: 0.1,
+        top_p: 1,
       });
 
-      return { config };
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from Azure OpenAI");
+      }
+
+      // console.log("Raw AI response for chart config:", content); // Debug logging
+
+      // Parse the JSON response with better error handling
+      let parsedResponse;
+      try {
+        // Clean the content to remove any markdown formatting
+        let cleanContent = content.trim();
+
+        // Remove markdown code blocks if present
+        if (
+          cleanContent.startsWith("```json") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(7, -3).trim();
+        } else if (
+          cleanContent.startsWith("```") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(3, -3).trim();
+        }
+
+        parsedResponse = JSON.parse(cleanContent);
+
+        // Transform old format to new format if needed
+        if (parsedResponse.xColumn && !parsedResponse.xKey) {
+          parsedResponse.xKey = parsedResponse.xColumn;
+          delete parsedResponse.xColumn;
+        }
+        if (parsedResponse.yColumn && !parsedResponse.yKeys) {
+          parsedResponse.yKeys = Array.isArray(parsedResponse.yColumn)
+            ? parsedResponse.yColumn
+            : [parsedResponse.yColumn];
+          delete parsedResponse.yColumn;
+        }
+        // Ensure legend is set
+        if (parsedResponse.legend === undefined) {
+          parsedResponse.legend = true;
+        }
+      } catch (e) {
+        console.warn(
+          "Failed to parse JSON response for chart config, trying to extract JSON"
+        );
+
+        // Try to find a JSON object in the response
+        const jsonMatch = content.match(
+          /\{[\s\S]*"type"[\s\S]*?\}(?=\s*$|\s*\n|$)/
+        );
+        if (jsonMatch) {
+          try {
+            parsedResponse = JSON.parse(jsonMatch[0]);
+
+            // Transform old format to new format if needed
+            if (parsedResponse.xColumn && !parsedResponse.xKey) {
+              parsedResponse.xKey = parsedResponse.xColumn;
+              delete parsedResponse.xColumn;
+            }
+            if (parsedResponse.yColumn && !parsedResponse.yKeys) {
+              parsedResponse.yKeys = Array.isArray(parsedResponse.yColumn)
+                ? parsedResponse.yColumn
+                : [parsedResponse.yColumn];
+              delete parsedResponse.yColumn;
+            }
+            // Ensure legend is set
+            if (parsedResponse.legend === undefined) {
+              parsedResponse.legend = true;
+            }
+          } catch (jsonError) {
+            // Try a broader match
+            const broadMatch = content.match(/\{[^}]*"type"[^}]*\}/);
+            if (broadMatch) {
+              try {
+                parsedResponse = JSON.parse(broadMatch[0]);
+
+                // Transform old format to new format if needed
+                if (parsedResponse.xColumn && !parsedResponse.xKey) {
+                  parsedResponse.xKey = parsedResponse.xColumn;
+                  delete parsedResponse.xColumn;
+                }
+                if (parsedResponse.yColumn && !parsedResponse.yKeys) {
+                  parsedResponse.yKeys = Array.isArray(parsedResponse.yColumn)
+                    ? parsedResponse.yColumn
+                    : [parsedResponse.yColumn];
+                  delete parsedResponse.yColumn;
+                }
+                // Ensure legend is set
+                if (parsedResponse.legend === undefined) {
+                  parsedResponse.legend = true;
+                }
+              } catch (broadError) {
+                throw new Error(
+                  "Could not parse chart config JSON from response"
+                );
+              }
+            } else {
+              throw new Error(
+                "Could not parse chart config JSON from response"
+              );
+            }
+          }
+        } else {
+          throw new Error("Could not find valid JSON in chart config response");
+        }
+      }
+
+      return { config: parsedResponse };
     } catch (e: any) {
       console.error(
         `Chart config generation attempt ${attempt + 1} failed:`,
@@ -997,4 +1345,183 @@ export const generateChartConfig = async (
       }
     }
   }
+};
+
+// Determine if data should be visualized based on the user question and data
+export const shouldVisualizeData = async (
+  userQuestion: string,
+  results: Result[],
+  maxRetries: number = 3
+): Promise<{ shouldVisualize: boolean; reason: string }> => {
+  "use server";
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await client.chat.completions.create({
+        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a data visualization expert. Your job is to determine whether data should be visualized based on the user's question and the characteristics of the data.
+
+        Consider these factors when deciding:
+        1. **Question Type**: 
+           - Comparison questions (e.g., "compare sales by region") → Usually visualize
+           - Trend questions (e.g., "show trends over time") → Usually visualize
+           - Distribution questions (e.g., "breakdown by category") → Usually visualize
+           - Single value questions (e.g., "what is the total revenue?") → Usually don't visualize
+           - Count/lookup questions (e.g., "how many users?", "find customer details") → Usually don't visualize
+
+        2. **Data Characteristics**:
+           - Multiple categories/groups → Good for visualization
+           - Time series data → Good for visualization
+           - Large datasets (>5 rows) with patterns → Good for visualization
+           - Single row or very few rows with specific details → Better as text
+           - Data with clear relationships/comparisons → Good for visualization
+
+        3. **User Intent**:
+           - Questions asking for "trends", "patterns", "comparison", "distribution" → Visualize
+           - Questions asking for specific values, details, or factual lookups → Don't visualize
+           - Questions about "what", "when", "where" specific items → Usually don't visualize
+           - Questions about "how much", "how many" across categories → Usually visualize
+
+        You must respond with a valid JSON object containing:
+        - "shouldVisualize": boolean indicating if data should be visualized
+        - "reason": string explaining why visualization is or isn't appropriate
+        
+        Do not include any markdown formatting, code blocks, or additional text. Return only the JSON object.
+        
+        Example response format:
+        {"shouldVisualize": true, "reason": "Data shows comparison across multiple categories which is ideal for bar chart visualization"}`,
+          },
+          {
+            role: "user",
+            content: `Analyze this user question and data to determine if visualization is appropriate:
+
+        User Question: "${userQuestion}"
+        
+        Data Sample (first 5 rows):
+        ${JSON.stringify(results.slice(0, 5), null, 2)}
+        
+        Data Summary:
+        - Total records: ${results.length}
+        - Columns: ${Object.keys(results[0] || {}).join(", ")}
+        
+        Should this data be visualized or presented as text?`,
+          },
+        ],
+        max_tokens: 1024,
+        temperature: 0.1,
+        top_p: 1,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from Azure OpenAI");
+      }
+
+      // Parse the JSON response with better error handling
+      let parsedResponse;
+      try {
+        // Clean the content to remove any markdown formatting
+        let cleanContent = content.trim();
+
+        // Remove markdown code blocks if present
+        if (
+          cleanContent.startsWith("```json") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(7, -3).trim();
+        } else if (
+          cleanContent.startsWith("```") &&
+          cleanContent.endsWith("```")
+        ) {
+          cleanContent = cleanContent.slice(3, -3).trim();
+        }
+
+        parsedResponse = JSON.parse(cleanContent);
+      } catch (e) {
+        console.warn(
+          "Failed to parse JSON response for visualization decision, trying to extract JSON"
+        );
+
+        // Try to find a JSON object in the response
+        const jsonMatch = content.match(
+          /\{[\s\S]*"shouldVisualize"[\s\S]*?\}(?=\s*$|\s*\n|$)/
+        );
+        if (jsonMatch) {
+          try {
+            parsedResponse = JSON.parse(jsonMatch[0]);
+          } catch (jsonError) {
+            // Fallback: default to not visualizing if we can't parse
+            console.warn(
+              "Could not parse visualization decision, defaulting to false"
+            );
+            return {
+              shouldVisualize: false,
+              reason:
+                "Could not determine visualization appropriateness, defaulting to text answer",
+            };
+          }
+        } else {
+          // Fallback: default to not visualizing if we can't find JSON
+          console.warn(
+            "Could not find JSON in visualization decision response"
+          );
+          return {
+            shouldVisualize: false,
+            reason:
+              "Could not determine visualization appropriateness, defaulting to text answer",
+          };
+        }
+      }
+
+      return {
+        shouldVisualize: parsedResponse.shouldVisualize || false,
+        reason: parsedResponse.reason || "No reason provided",
+      };
+    } catch (e: any) {
+      console.error(
+        `Visualization decision attempt ${attempt + 1} failed:`,
+        e.message
+      );
+
+      // Check if it's a rate limit error
+      if (e.message && e.message.includes("Rate limit reached")) {
+        if (attempt < maxRetries - 1) {
+          // Extract wait time from error message, or use exponential backoff
+          const waitMatch = e.message.match(/try again in ([\d.]+)s/);
+          const waitTime = waitMatch
+            ? parseFloat(waitMatch[1]) * 1000
+            : Math.pow(2, attempt) * 1000;
+
+          console.log(
+            `Rate limit hit, waiting ${waitTime}ms before retry ${
+              attempt + 2
+            }/${maxRetries}`
+          );
+          await sleep(waitTime);
+          continue;
+        }
+      }
+
+      // If it's the last attempt or not a rate limit error, return default
+      if (attempt === maxRetries - 1) {
+        console.warn(
+          "Failed to determine visualization decision, defaulting to false"
+        );
+        return {
+          shouldVisualize: false,
+          reason:
+            "Failed to determine visualization appropriateness due to AI service error",
+        };
+      }
+    }
+  }
+
+  // This should never be reached, but TypeScript requires it
+  return {
+    shouldVisualize: false,
+    reason: "Unexpected error in visualization decision",
+  };
 };

@@ -63,7 +63,7 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { generateChartConfig } from "@/actions/dbQuery";
+import { generateChartConfig, shouldVisualizeData } from "@/actions/dbQuery";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
@@ -304,10 +304,26 @@ const HistoryPage = () => {
 
     setIsChartLoading(true);
     try {
-      const generation = await generateChartConfig(item.results, item.query);
-      setChartConfig(generation.config);
+      // First determine if data should be visualized
+      const visualizationDecision = await shouldVisualizeData(
+        item.query,
+        item.results
+      );
+
+      console.log("History visualization decision:", visualizationDecision);
+
+      // Only generate chart config if visualization is appropriate
+      if (visualizationDecision.shouldVisualize) {
+        const generation = await generateChartConfig(item.results, item.query);
+        setChartConfig(generation?.config || null);
+      } else {
+        // Clear chart config if visualization is not appropriate
+        setChartConfig(null);
+        console.log("Visualization not needed:", visualizationDecision.reason);
+      }
     } catch (error) {
       console.error("Failed to generate chart:", error);
+      setChartConfig(null);
     } finally {
       setIsChartLoading(false);
     }

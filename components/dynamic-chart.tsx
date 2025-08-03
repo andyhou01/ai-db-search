@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -52,6 +51,22 @@ export function DynamicChart({
 }) {
   const renderChart = () => {
     if (!chartData || !chartConfig) return <div>No chart data</div>;
+
+    // Ensure yKeys exists and is an array
+    if (
+      !chartConfig.yKeys ||
+      !Array.isArray(chartConfig.yKeys) ||
+      chartConfig.yKeys.length === 0
+    ) {
+      console.error("Chart config missing yKeys:", chartConfig);
+      return <div>Invalid chart configuration: missing yKeys</div>;
+    }
+
+    // Ensure xKey exists
+    if (!chartConfig.xKey) {
+      console.error("Chart config missing xKey:", chartConfig);
+      return <div>Invalid chart configuration: missing xKey</div>;
+    }
 
     const parsedChartData = chartData.map((item) => {
       const parsedItem: { [key: string]: any } = {};
@@ -286,13 +301,17 @@ export function DynamicChart({
       <h2 className="text-lg font-bold mb-2">{chartConfig.title}</h2>
       {chartConfig && chartData.length > 0 && (
         <ChartContainer
-          config={chartConfig.yKeys.reduce((acc, key, index) => {
-            acc[key] = {
-              label: key,
-              color: colors[index % colors.length],
-            };
-            return acc;
-          }, {} as Record<string, { label: string; color: string }>)}
+          config={
+            chartConfig.yKeys && chartConfig.yKeys.length > 0
+              ? chartConfig.yKeys.reduce((acc, key, index) => {
+                  acc[key] = {
+                    label: key,
+                    color: colors[index % colors.length],
+                  };
+                  return acc;
+                }, {} as Record<string, { label: string; color: string }>)
+              : {} // Fallback to empty config if yKeys is undefined
+          }
           className="h-[320px] w-full"
         >
           {renderChart()}
