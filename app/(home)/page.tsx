@@ -719,20 +719,6 @@ export default function Page() {
                                           variant="outline"
                                           size="sm"
                                           onClick={() =>
-                                            toggleDataView(message.id)
-                                          }
-                                          className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/20 transition-all duration-200 hover:scale-105 hover:shadow-sm"
-                                        >
-                                          <Database className="w-3 h-3 mr-2" />
-                                          {message.showData
-                                            ? "Hide Data Table"
-                                            : "Show Data Table"}
-                                        </Button>
-
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() =>
                                             toggleQueryView(message.id)
                                           }
                                           className="text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-950/20 transition-all duration-200 hover:scale-105 hover:shadow-sm"
@@ -741,6 +727,20 @@ export default function Page() {
                                           {message.showQuery
                                             ? "Hide SQL Query"
                                             : "Show SQL Query"}
+                                        </Button>
+
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() =>
+                                            toggleDataView(message.id)
+                                          }
+                                          className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/20 transition-all duration-200 hover:scale-105 hover:shadow-sm"
+                                        >
+                                          <Database className="w-3 h-3 mr-2" />
+                                          {message.showData
+                                            ? "Hide Data Table"
+                                            : "Show Data Table"}
                                         </Button>
                                       </div>
                                     </div>
