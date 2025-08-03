@@ -16,41 +16,70 @@ export function transformDataForMultiLineChart(
   data: InputDataPoint[],
   chartConfig: Config
 ): TransformationResult {
-  // console.log("Input data:", data);
-  const {xKey,lineCategories, measurementColumn } = chartConfig;
+  console.log("Input data for multi-line chart:", data);
+  console.log("Chart config:", chartConfig);
+
+  const { xKey, lineCategories, measurementColumn } = chartConfig;
 
   const fields = Object.keys(data[0]);
-  // console.log("Fields:", fields);
+  console.log("Available fields:", fields);
 
-  const xAxisField = xKey ?? 'year'; // Assuming 'year' is always the x-axis
-  const lineField = fields.find(field => lineCategories?.includes(data[0][field] as string)) || '';
+  const xAxisField = xKey ?? "year"; // Assuming 'year' is always the x-axis
 
-  // console.log("X-axis field:", xAxisField);
-  // console.log("Line field:", lineField);
+  // Find the field that contains the categorical values
+  // Look for a field that contains any of the lineCategories values
+  let lineField = "";
+  if (lineCategories && lineCategories.length > 0) {
+    for (const field of fields) {
+      if (field !== xAxisField && field !== measurementColumn) {
+        // Check if this field contains any of the expected categories
+        const fieldValues = Array.from(
+          new Set(data.map((item) => String(item[field])))
+        );
+        const hasMatchingCategories = lineCategories.some((category) =>
+          fieldValues.includes(category)
+        );
+        if (hasMatchingCategories) {
+          lineField = field;
+          break;
+        }
+      }
+    }
+  }
 
-  const xAxisValues = Array.from(new Set(data.map(item => String(item[xAxisField]))));
+  console.log("X-axis field:", xAxisField);
+  console.log("Line field:", lineField);
+  console.log("Line categories:", lineCategories);
 
-  // console.log("X-axis values:", xAxisValues);
-  // console.log("Line categories:", lineCategories);
+  const xAxisValues = Array.from(
+    new Set(data.map((item) => String(item[xAxisField])))
+  );
 
-  const transformedData: TransformedDataPoint[] = xAxisValues.map(xValue => {
+  console.log("X-axis values:", xAxisValues);
+
+  const transformedData: TransformedDataPoint[] = xAxisValues.map((xValue) => {
     const dataPoint: TransformedDataPoint = { [xAxisField]: xValue };
-    lineCategories?.forEach(category => {
-      const matchingItem = data.find(item =>
-        String(item[xAxisField]) === xValue && String(item[lineField]) === category
+    lineCategories?.forEach((category) => {
+      const matchingItem = data.find(
+        (item) =>
+          String(item[xAxisField]) === xValue &&
+          String(item[lineField]) === category
       );
-      dataPoint[category] = matchingItem ? matchingItem[measurementColumn ?? ""] : null;
+      dataPoint[category] = matchingItem
+        ? matchingItem[measurementColumn ?? ""]
+        : null;
     });
     return dataPoint;
   });
 
   transformedData.sort((a, b) => Number(a[xAxisField]) - Number(b[xAxisField]));
 
-  // console.log("Transformed data:", transformedData);
+  console.log("Transformed data:", transformedData);
+  console.log("Line fields for rendering:", lineCategories ?? []);
 
   return {
     data: transformedData,
     xAxisField,
-    lineFields: lineCategories ?? []
+    lineFields: lineCategories ?? [],
   };
 }

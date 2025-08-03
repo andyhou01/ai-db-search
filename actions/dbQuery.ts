@@ -1153,10 +1153,15 @@ export const generateChartConfig = async (
         3. Area charts: Similar to line charts but better for showing cumulative data or parts of a whole over time
         4. Pie charts: Use sparingly, only for showing parts of a whole with few categories (3-5 max)
 
+        IMPORTANT: When data has multiple categorical groups over time (e.g., different states, types, categories tracked over dates), you need to determine if this requires:
+        - Multi-line chart: Use "multipleLines": true, set "lineCategories" to the unique values of the grouping column, and "measurementColumn" to the numeric column
+        - Grouped/stacked chart: Use appropriate chart type with proper grouping
+
         Chart configuration rules:
         - Always choose the most appropriate chart type for the data
-        - For time series data, use line or area charts
+        - For time series data with multiple categories, use multi-line charts with multipleLines: true
         - For categorical comparisons, use bar charts
+        - For data showing parts of a whole over time, use stacked area charts
         - Set appropriate colors that are accessible and meaningful
         - Create clear, descriptive titles
         - Provide insightful takeaways about what the chart reveals
@@ -1164,9 +1169,15 @@ export const generateChartConfig = async (
         When analyzing the data:
         - Look at the column types and names to understand the data structure
         - Identify time/date columns for x-axis in time series
-        - Identify categorical columns for grouping
+        - Identify categorical columns for grouping (these become separate lines/series)
         - Identify numeric columns for measurements
         - Consider the business context from the user question
+        - If you see 3+ columns where one is time-based, one is categorical, and one is numeric, this likely needs multipleLines: true
+
+        For multi-line charts, you must include these additional fields:
+        - "multipleLines": true
+        - "measurementColumn": the numeric column name (e.g., "count", "value")
+        - "lineCategories": array of unique categorical values that will become separate lines
 
         You must respond with a valid JSON object containing chart configuration with these exact fields:
         - "type": one of "bar", "line", "area", "pie"
@@ -1175,11 +1186,17 @@ export const generateChartConfig = async (
         - "yKeys": array of column names for y-axis values (e.g., ["count", "total"])
         - "description": brief description of what the chart shows
         - "legend": boolean indicating if legend should be shown
+        - "multipleLines": boolean (only for line charts with multiple categories)
+        - "measurementColumn": string (only when multipleLines is true)
+        - "lineCategories": array of strings (only when multipleLines is true)
         
         Do not include any markdown formatting, code blocks, or additional text. Return only the JSON object.
         
-        Example response format:
-        {"type": "bar", "title": "Sales by Region", "xKey": "region", "yKeys": ["sales_count"], "description": "Shows sales distribution across regions", "legend": true}`,
+        Example response format for simple chart:
+        {"type": "bar", "title": "Sales by Region", "xKey": "region", "yKeys": ["sales_count"], "description": "Shows sales distribution across regions", "legend": true}
+        
+        Example response format for multi-line time series:
+        {"type": "line", "title": "Compliance Trends by State", "xKey": "scan_date", "yKeys": ["count"], "description": "Shows trends over time for different compliance states", "legend": true, "multipleLines": true, "measurementColumn": "count", "lineCategories": ["Compliant", "Exempt", "Managed", "NonCompliant"]}`,
           },
           {
             role: "user",
@@ -1193,6 +1210,11 @@ export const generateChartConfig = async (
         Data Summary:
         - Total records: ${results.length}
         - Columns: ${Object.keys(results[0] || {}).join(", ")}
+        
+        IMPORTANT ANALYSIS:
+        - If you see data with time-based x-axis AND categorical groupings (like different states, types, categories), you likely need a multi-line chart
+        - Look for patterns like: date + category + count/value columns
+        - Multi-line charts are ideal when you want to compare trends of different categories over time
         
         Create a chart configuration that best visualizes this data and answers the user's question.`,
           },
@@ -1245,6 +1267,46 @@ export const generateChartConfig = async (
         if (parsedResponse.legend === undefined) {
           parsedResponse.legend = true;
         }
+
+        // Auto-detect multi-line configuration if not set but should be
+        if (parsedResponse.type === "line" && !parsedResponse.multipleLines) {
+          const columns = Object.keys(results[0] || {});
+          // If we have 3+ columns and detect a pattern of date + category + numeric
+          if (columns.length >= 3) {
+            // Look for potential categorical columns (strings that aren't dates)
+            const potentialCategoryColumns = columns.filter((col) => {
+              const sampleValues = results.slice(0, 5).map((row) => row[col]);
+              return sampleValues.some(
+                (val) =>
+                  typeof val === "string" &&
+                  !val.match(/^\d{4}-\d{2}-\d{2}/) && // not a date
+                  !val.match(/^\d+$/) // not a number
+              );
+            });
+
+            if (potentialCategoryColumns.length > 0) {
+              const categoryColumn = potentialCategoryColumns[0];
+              const uniqueCategories = Array.from(
+                new Set(results.map((row) => String(row[categoryColumn])))
+              ).slice(0, 10); // Limit to prevent too many lines
+
+              if (
+                uniqueCategories.length > 1 &&
+                uniqueCategories.length <= 10
+              ) {
+                console.log("Auto-detecting multi-line configuration:", {
+                  categoryColumn,
+                  uniqueCategories,
+                  measurementColumn: parsedResponse.yKeys[0],
+                });
+
+                parsedResponse.multipleLines = true;
+                parsedResponse.lineCategories = uniqueCategories;
+                parsedResponse.measurementColumn = parsedResponse.yKeys[0];
+              }
+            }
+          }
+        }
       } catch (e) {
         console.warn(
           "Failed to parse JSON response for chart config, trying to extract JSON"
@@ -1273,6 +1335,43 @@ export const generateChartConfig = async (
             if (parsedResponse.legend === undefined) {
               parsedResponse.legend = true;
             }
+
+            // Auto-detect multi-line configuration if not set but should be
+            if (
+              parsedResponse.type === "line" &&
+              !parsedResponse.multipleLines
+            ) {
+              const columns = Object.keys(results[0] || {});
+              if (columns.length >= 3) {
+                const potentialCategoryColumns = columns.filter((col) => {
+                  const sampleValues = results
+                    .slice(0, 5)
+                    .map((row) => row[col]);
+                  return sampleValues.some(
+                    (val) =>
+                      typeof val === "string" &&
+                      !val.match(/^\d{4}-\d{2}-\d{2}/) &&
+                      !val.match(/^\d+$/)
+                  );
+                });
+
+                if (potentialCategoryColumns.length > 0) {
+                  const categoryColumn = potentialCategoryColumns[0];
+                  const uniqueCategories = Array.from(
+                    new Set(results.map((row) => String(row[categoryColumn])))
+                  ).slice(0, 10);
+
+                  if (
+                    uniqueCategories.length > 1 &&
+                    uniqueCategories.length <= 10
+                  ) {
+                    parsedResponse.multipleLines = true;
+                    parsedResponse.lineCategories = uniqueCategories;
+                    parsedResponse.measurementColumn = parsedResponse.yKeys[0];
+                  }
+                }
+              }
+            }
           } catch (jsonError) {
             // Try a broader match
             const broadMatch = content.match(/\{[^}]*"type"[^}]*\}/);
@@ -1294,6 +1393,46 @@ export const generateChartConfig = async (
                 // Ensure legend is set
                 if (parsedResponse.legend === undefined) {
                   parsedResponse.legend = true;
+                }
+
+                // Auto-detect multi-line configuration if not set but should be
+                if (
+                  parsedResponse.type === "line" &&
+                  !parsedResponse.multipleLines
+                ) {
+                  const columns = Object.keys(results[0] || {});
+                  if (columns.length >= 3) {
+                    const potentialCategoryColumns = columns.filter((col) => {
+                      const sampleValues = results
+                        .slice(0, 5)
+                        .map((row) => row[col]);
+                      return sampleValues.some(
+                        (val) =>
+                          typeof val === "string" &&
+                          !val.match(/^\d{4}-\d{2}-\d{2}/) &&
+                          !val.match(/^\d+$/)
+                      );
+                    });
+
+                    if (potentialCategoryColumns.length > 0) {
+                      const categoryColumn = potentialCategoryColumns[0];
+                      const uniqueCategories = Array.from(
+                        new Set(
+                          results.map((row) => String(row[categoryColumn]))
+                        )
+                      ).slice(0, 10);
+
+                      if (
+                        uniqueCategories.length > 1 &&
+                        uniqueCategories.length <= 10
+                      ) {
+                        parsedResponse.multipleLines = true;
+                        parsedResponse.lineCategories = uniqueCategories;
+                        parsedResponse.measurementColumn =
+                          parsedResponse.yKeys[0];
+                      }
+                    }
+                  }
                 }
               } catch (broadError) {
                 throw new Error(
