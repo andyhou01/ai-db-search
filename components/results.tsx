@@ -129,10 +129,10 @@ export const Results = ({
               size="sm"
               onClick={downloadCSV}
               disabled={results.length === 0}
-              className="flex items-center gap-1"
+              className="flex items-center gap-2 text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-950/20 transition-all duration-200"
             >
               <Download className="h-4 w-4" />
-              Download CSV
+              <span className="hidden sm:inline">Download CSV</span>
             </Button>
           </div>
           <div className="sm:min-h-[10px] relative flex-grow overflow-hidden">
@@ -191,17 +191,19 @@ export const Results = ({
                   size="sm"
                   onClick={goToPrevPage}
                   disabled={currentPage === 1}
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
+                  <span className="hidden sm:inline">Previous</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={goToNextPage}
                   disabled={currentPage === totalPages}
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                 >
-                  Next
+                  <span className="hidden sm:inline">Next</span>
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>

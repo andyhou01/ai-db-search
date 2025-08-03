@@ -11,7 +11,16 @@ import {
   generateAnswerFromResults,
 } from "@/actions/dbQuery";
 import { Config, Result, AIAnswer } from "@/lib/types";
-import { Loader2, Send, User, Database } from "lucide-react";
+import {
+  Loader2,
+  Send,
+  User,
+  Database,
+  Bot,
+  Sparkles,
+  Brain,
+  MessageCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Results } from "@/components/results";
 import { DynamicChart } from "@/components/dynamic-chart";
@@ -63,12 +72,6 @@ interface Message {
   };
 }
 
-// Add new interface for query suggestions
-interface QuerySuggestion {
-  text: string;
-  description: string;
-}
-
 export default function Page() {
   const [inputValue, setInputValue] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -80,10 +83,6 @@ export default function Page() {
   const [selectedConnection, setSelectedConnection] = useState<string>("");
   const [selectedConnectionName, setSelectedConnectionName] =
     useState<string>("");
-  const [querySuggestions, setQuerySuggestions] = useState<QuerySuggestion[]>(
-    []
-  );
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -103,14 +102,6 @@ export default function Page() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  // Add new useEffect to generate suggestions when connection changes
-  useEffect(() => {
-    if (selectedConnection) {
-      generateQuerySuggestions(selectedConnection);
-      setShowSuggestions(true);
-    }
-  }, [selectedConnection]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -320,111 +311,9 @@ export default function Page() {
     );
   };
 
-  // Function to generate query suggestions based on the selected connection
-  const generateQuerySuggestions = async (connectionUrl: string) => {
-    try {
-      // First try to get schema from cached enhanced data
-      let schemaInfo;
-      if (selectedConnectionName) {
-        const enhancedSchema = await loadEnhancedSchema(selectedConnectionName);
-        if (enhancedSchema) {
-          schemaInfo = enhancedSchema.basicSchema;
-          console.log(
-            `Using cached schema for suggestions: ${selectedConnectionName}`
-          );
-        }
-      }
-
-      // If no cached schema, fetch from database
-      if (!schemaInfo) {
-        console.log(
-          `No cached schema found for suggestions, fetching from database`
-        );
-        schemaInfo = await getDatabaseSchema(connectionUrl);
-      }
-
-      if (!schemaInfo || schemaInfo.tables.length === 0) {
-        setShowSuggestions(false);
-        return;
-      }
-
-      // Generate dynamic suggestions based on schema
-      const suggestions: QuerySuggestion[] = [];
-
-      // Get a list of table names
-      const tables = Array.from(
-        new Set(schemaInfo.tables.map((item: any) => item.name))
-      );
-
-      // Add table-specific suggestions
-      tables.forEach((table) => {
-        // Get columns for this table
-        const tableColumns = schemaInfo.tables.find(
-          (item: any) => item.name === table
-        )?.columns;
-
-        // Find date/time columns
-        const dateColumns = tableColumns?.filter(
-          (col: any) =>
-            col.type.toLowerCase().includes("date") ||
-            col.type.toLowerCase().includes("time")
-        );
-
-        // Find numeric columns
-        const numericColumns = tableColumns
-          ?.filter((col: any) =>
-            ["int", "float", "decimal", "double", "number", "numeric"].some(
-              (type: string) => col.type.toLowerCase().includes(type)
-            )
-          )
-          .filter((col: any) => !col.name.toLowerCase().includes("id"));
-
-        // Add table-specific suggestions
-        if (dateColumns && dateColumns.length > 0) {
-          suggestions.push({
-            text: `Show me ${table} data trends over time by ${dateColumns[0].name}`,
-            description: `Visualize time-based patterns in ${table} using the ${dateColumns[0].name} field`,
-          });
-        }
-        suggestions.push({
-          text: `How many records are in ${table}?`,
-          description: `Display the number of rows in the ${table} table`,
-        });
-
-        if (numericColumns && numericColumns.length > 0) {
-          suggestions.push({
-            text: `What's the average ${numericColumns[0].name} in ${table}?`,
-            description: `Calculate the average ${numericColumns[0].name} value in the ${table} table`,
-          });
-
-          suggestions.push({
-            text: `Find the highest ${numericColumns[0].name} values in ${table}`,
-            description: `Identify maximum ${numericColumns[0].name} values in the ${table} table`,
-          });
-        }
-      });
-
-      // Add some cross-table suggestions if there are multiple tables
-      if (tables.length > 1) {
-        suggestions.push({
-          text: `How do ${tables[0]} and ${tables[1]} relate to each other?`,
-          description: `Explore the relationship between the ${tables[0]} and ${tables[1]} tables`,
-        });
-      }
-
-      // Limit to a reasonable number of suggestions
-      setQuerySuggestions(suggestions.slice(0, 6));
-    } catch (error) {
-      console.error("Error generating query suggestions:", error);
-      // Fallback to generic suggestions
-      setShowSuggestions(false);
-    }
-  };
-
   const handleNewChat = () => {
     setMessages([]);
     setInputValue("");
-    setShowSuggestions(false);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -444,7 +333,7 @@ export default function Page() {
       <Header messages={messages} handleNewChat={handleNewChat} />
 
       {/* Scrollable chat area */}
-      <div className="flex flex-col w-full max-w-5xl h-[86vh] mt-16 overflow-y-auto pr-6 py-8">
+      <div className="flex flex-col w-full max-w-5xl h-[86vh] mt-16 overflow-y-auto pl-4 pr-6 py-8">
         <motion.div
           className="flex flex-col h-full"
           initial={{ opacity: 0 }}
@@ -453,11 +342,7 @@ export default function Page() {
         >
           <div className="flex-grow">
             {messages.length === 0 ? (
-              <Instruction
-                showSuggestions={showSuggestions}
-                querySuggestions={querySuggestions}
-                handleSubmit={handleSubmit}
-              />
+              <Instruction />
             ) : (
               <div className="space-y-6">
                 {messages.map((message) => (
@@ -469,10 +354,13 @@ export default function Page() {
                   >
                     <div className={`flex gap-3 max-w-[95%]`}>
                       {message.type === "system" && (
-                        <Avatar className="w-8 h-8 mt-1">
-                          <AvatarImage src="/database-icon.png" alt="DB" />
-                          <AvatarFallback className="bg-primary/10 text-primary">
-                            <Database className="w-4 h-4" />
+                        <Avatar className="w-8 h-8 mt-1 ring-2 ring-primary/20">
+                          <AvatarImage
+                            src="/database-icon.png"
+                            alt="AI Assistant"
+                          />
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                            <Bot className="w-4 h-4" />
                           </AvatarFallback>
                         </Avatar>
                       )}
@@ -491,15 +379,20 @@ export default function Page() {
                             </div>
                           ) : message.loading ? (
                             <div className="flex items-center gap-3">
-                              <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                              <p>
+                              <div className="relative">
+                                <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                                <div className="absolute inset-0 w-5 h-5 animate-ping">
+                                  <Sparkles className="w-5 h-5 text-blue-300 opacity-30" />
+                                </div>
+                              </div>
+                              <p className="text-muted-foreground">
                                 {message.loadingStep === 1
-                                  ? "Generating SQL query..."
+                                  ? "🔍 Generating SQL query..."
                                   : message.loadingStep === 2
-                                  ? "Running SQL query..."
+                                  ? "⚡ Running SQL query..."
                                   : message.loadingStep === 3
-                                  ? "Generating AI answer..."
-                                  : "Creating visualizations..."}
+                                  ? "🧠 Generating AI answer..."
+                                  : "📊 Creating visualizations..."}
                               </p>
                             </div>
                           ) : (
@@ -508,13 +401,20 @@ export default function Page() {
 
                               {message.sqlError && (
                                 <div className="mt-2">
-                                  <Badge variant="outline" className="mb-2">
-                                    {message.sqlError.generationIssues?.length
-                                      ? "Query Generation Error"
-                                      : message.sqlError.functionError
-                                      ? "SQL Function Error"
-                                      : "SQL Error"}
-                                  </Badge>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-2 h-2 bg-gradient-to-r from-red-400 to-orange-500 rounded-full animate-pulse"></div>
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-gradient-to-r from-red-100 to-orange-100 dark:from-red-950/30 dark:to-orange-950/30 border-red-200/50 dark:border-red-800/30 text-red-700 dark:text-red-300"
+                                    >
+                                      ⚠️{" "}
+                                      {message.sqlError.generationIssues?.length
+                                        ? "Query Generation Error"
+                                        : message.sqlError.functionError
+                                        ? "SQL Function Error"
+                                        : "SQL Error"}
+                                    </Badge>
+                                  </div>
                                   <SqlErrorDisplay
                                     error={message.sqlError.error}
                                     originalQuery={message.query || ""}
@@ -670,15 +570,22 @@ export default function Page() {
                               {/* AI Answer Display */}
                               {message.aiAnswer && (
                                 <div className="mt-3">
-                                  <div className="bg-card border rounded-lg p-4 shadow-sm">
+                                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200/50 dark:border-blue-800/30 rounded-lg p-4 shadow-sm">
                                     <div className="flex items-center gap-2 mb-3">
-                                      <div className="w-2 h-2 bg-primary rounded-full"></div>
-                                      <Badge
-                                        variant="secondary"
-                                        className="bg-primary/10 text-primary"
-                                      >
-                                        AI Answer
-                                      </Badge>
+                                      <div className="flex items-center gap-2">
+                                        <div className="relative">
+                                          <Brain className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                          <div className="absolute -top-1 -right-1">
+                                            <Sparkles className="w-2.5 h-2.5 text-yellow-500 animate-pulse" />
+                                          </div>
+                                        </div>
+                                        <Badge
+                                          variant="secondary"
+                                          className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 shadow-sm"
+                                        >
+                                          ✨ AI Analysis
+                                        </Badge>
+                                      </div>
                                     </div>
                                     <div className="space-y-3">
                                       <p className="text-foreground font-medium leading-relaxed">
@@ -725,8 +632,9 @@ export default function Page() {
                                         onClick={() =>
                                           toggleDataView(message.id)
                                         }
-                                        className="text-primary border-primary/30 hover:bg-primary/10"
+                                        className="text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950/20 transition-all duration-200"
                                       >
+                                        <Database className="w-3 h-3 mr-1" />
                                         {message.showData
                                           ? "Hide Data Table"
                                           : "Show Data Table"}
@@ -738,8 +646,9 @@ export default function Page() {
                                         onClick={() =>
                                           toggleQueryView(message.id)
                                         }
-                                        className="text-primary border-primary/30 hover:bg-primary/10"
+                                        className="text-green-600 border-green-200 hover:bg-green-50 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-950/20 transition-all duration-200"
                                       >
+                                        <Brain className="w-3 h-3 mr-1" />
                                         {message.showQuery
                                           ? "Hide SQL Query"
                                           : "Show SQL Query"}
@@ -755,9 +664,15 @@ export default function Page() {
                                 message.columns &&
                                 message.chartConfig && (
                                   <div className="mt-3">
-                                    <Badge variant="outline" className="mb-2">
-                                      Visualization
-                                    </Badge>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="w-2 h-2 bg-gradient-to-r from-orange-400 to-pink-500 rounded-full"></div>
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-gradient-to-r from-orange-100 to-pink-100 dark:from-orange-950/30 dark:to-pink-950/30 border-orange-200/50 dark:border-orange-800/30 text-orange-700 dark:text-orange-300"
+                                      >
+                                        📊 Visualization
+                                      </Badge>
+                                    </div>
                                     <div className="border rounded-lg p-4">
                                       <DynamicChart
                                         chartData={message.results}
@@ -773,9 +688,15 @@ export default function Page() {
                                 message.columns &&
                                 message.showData && (
                                   <div className="mt-3">
-                                    <Badge variant="outline" className="mb-2">
-                                      Data Table
-                                    </Badge>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="w-2 h-2 bg-gradient-to-r from-blue-400 to-cyan-500 rounded-full"></div>
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-gradient-to-r from-blue-100 to-cyan-100 dark:from-blue-950/30 dark:to-cyan-950/30 border-blue-200/50 dark:border-blue-800/30 text-blue-700 dark:text-blue-300"
+                                      >
+                                        🗃️ Data Table
+                                      </Badge>
+                                    </div>
                                     <Results
                                       results={message.results}
                                       chartConfig={message.chartConfig || null}
@@ -788,9 +709,15 @@ export default function Page() {
                               {/* Query Display - Only when toggled on */}
                               {message.query && message.showQuery && (
                                 <div className="mt-2">
-                                  <Badge variant="outline" className="mb-2">
-                                    SQL Query
-                                  </Badge>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-2 h-2 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full"></div>
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-950/30 dark:to-emerald-950/30 border-green-200/50 dark:border-green-800/30 text-green-700 dark:text-green-300"
+                                    >
+                                      💾 SQL Query
+                                    </Badge>
+                                  </div>
                                   <QueryViewer
                                     activeQuery={message.query}
                                     inputValue=""
@@ -808,10 +735,10 @@ export default function Page() {
                       </div>
 
                       {message.type === "user" && (
-                        <Avatar className="w-8 h-8 mt-1">
+                        <Avatar className="w-8 h-8 mt-1 ring-2 ring-green-500/20">
                           <AvatarImage src="/user-avatar.png" alt="User" />
-                          <AvatarFallback className="bg-primary text-primary-foreground">
-                            <User className="w-4 h-4" />
+                          <AvatarFallback className="bg-gradient-to-br from-green-500 to-emerald-600 text-white">
+                            <MessageCircle className="w-4 h-4" />
                           </AvatarFallback>
                         </Avatar>
                       )}
@@ -843,16 +770,17 @@ export default function Page() {
 
                 setSelectedConnection(url);
                 setSelectedConnectionName(name);
-                // Show suggestions when connection changes
-                if (url && messages.length === 0) {
-                  setShowSuggestions(true);
-                }
               }}
             >
               <SelectTrigger className="w-full text-sm border-none h-9 bg-muted">
                 <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4 text-muted-foreground" />
-                  <SelectValue placeholder="Select the DB" />
+                  <div className="relative">
+                    <Database className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <div className="absolute -top-0.5 -right-0.5">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                    </div>
+                  </div>
+                  <SelectValue placeholder="Select Database" />
                 </div>
               </SelectTrigger>
               <SelectContent>
@@ -892,12 +820,17 @@ export default function Page() {
             <Button
               onClick={() => handleSubmit()}
               disabled={loading || inputValue.trim() === ""}
-              className="px-4"
+              className="px-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 shadow-sm transition-all duration-200"
             >
               {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <div className="relative">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                </div>
               ) : (
-                <Send className="w-4 h-4" />
+                <div className="flex items-center gap-1">
+                  <Send className="w-4 h-4" />
+                  <Sparkles className="w-3 h-3 opacity-70" />
+                </div>
               )}
             </Button>
           </div>
