@@ -603,20 +603,40 @@ export const runGenerateSQLQuery = async (
   // First, ensure the query has a LIMIT clause
   const safeQuery = await ensureQueryHasLimit(query);
 
-  // Check if the query is a SELECT statement
-  if (
-    !safeQuery.trim().toLowerCase().startsWith("select") ||
-    safeQuery.trim().toLowerCase().includes("drop") ||
-    safeQuery.trim().toLowerCase().includes("delete") ||
-    safeQuery.trim().toLowerCase().includes("insert") ||
-    safeQuery.trim().toLowerCase().includes("update") ||
-    safeQuery.trim().toLowerCase().includes("alter") ||
-    safeQuery.trim().toLowerCase().includes("truncate") ||
-    safeQuery.trim().toLowerCase().includes("create") ||
-    safeQuery.trim().toLowerCase().includes("grant") ||
-    safeQuery.trim().toLowerCase().includes("revoke")
-  ) {
+  // Check if the query is a SELECT statement with improved validation
+  const queryTrimmed = safeQuery.trim().toLowerCase();
+
+  // Check if it starts with SELECT
+  if (!queryTrimmed.startsWith("select")) {
     throw new Error("Only SELECT queries are allowed");
+  }
+
+  // Check for dangerous SQL keywords at the beginning of statements
+  // Split by semicolon to handle multiple statements
+  const statements = queryTrimmed
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  for (const statement of statements) {
+    // Check if any statement starts with dangerous keywords
+    const dangerousKeywords = [
+      "drop",
+      "delete",
+      "insert",
+      "update",
+      "alter",
+      "truncate",
+      "create",
+      "grant",
+      "revoke",
+    ];
+
+    for (const keyword of dangerousKeywords) {
+      if (statement.startsWith(keyword + " ") || statement === keyword) {
+        throw new Error("Only SELECT queries are allowed");
+      }
+    }
   }
 
   let data: any;
