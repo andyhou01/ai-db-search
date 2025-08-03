@@ -378,7 +378,8 @@ export const generateQuery = async (
   connectionUrl: string,
   existingSchema?: string,
   defaultLimit: number = 100,
-  connectionName?: string
+  connectionName?: string,
+  maxRetries: number = 3
 ): Promise<
   | {
       error: true;
@@ -393,160 +394,198 @@ export const generateQuery = async (
     }
 > => {
   "use server";
-  try {
-    // Try to load enhanced schema first if connection name is provided
-    let enhancedSchema: EnhancedDatabaseSchema | undefined;
-    if (connectionName) {
-      enhancedSchema = await loadEnhancedSchema(connectionName);
-    }
 
-    // Use existing schema if provided, otherwise use cached schema if available, or fetch basic schema as last resort
-    let dbSchema;
-    if (existingSchema) {
-      dbSchema = existingSchema;
-    } else if (enhancedSchema) {
-      // Use the cached basic schema from enhanced schema instead of fetching from DB
-      dbSchema = enhancedSchema.basicSchema;
-      console.log(`Using cached schema for connection: ${connectionName}`);
-    } else {
-      // Only fetch from database if no cached data is available
-      console.log(
-        `No cached schema found, fetching from database for connection: ${
-          connectionName || "unnamed"
-        }`
-      );
-      dbSchema = await getDatabaseSchema(connectionUrl);
-    }
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Try to load enhanced schema first if connection name is provided
+      let enhancedSchema: EnhancedDatabaseSchema | undefined;
+      if (connectionName) {
+        enhancedSchema = await loadEnhancedSchema(connectionName);
+      }
 
-    // Prepare schema information for the AI model
-    let schemaToUse = dbSchema;
-    let additionalContext = "";
+      // Use existing schema if provided, otherwise use cached schema if available, or fetch basic schema as last resort
+      let dbSchema;
+      if (existingSchema) {
+        dbSchema = existingSchema;
+      } else if (enhancedSchema) {
+        // Use the cached basic schema from enhanced schema instead of fetching from DB
+        dbSchema = enhancedSchema.basicSchema;
+        console.log(`Using cached schema for connection: ${connectionName}`);
+      } else {
+        // Only fetch from database if no cached data is available
+        console.log(
+          `No cached schema found, fetching from database for connection: ${
+            connectionName || "unnamed"
+          }`
+        );
+        dbSchema = await getDatabaseSchema(connectionUrl);
+      }
 
-    // If we have enhanced schema, include table summaries in the context
-    if (enhancedSchema) {
-      additionalContext = `\n\nTable Summaries (for better understanding of data):\n`;
+      // Prepare schema information for the AI model
+      let schemaToUse = dbSchema;
+      let additionalContext = "";
 
-      enhancedSchema.tableSummaries.forEach((table) => {
-        additionalContext += `\n${table.name} (${table.rowCount} rows):\n`;
+      // If we have enhanced schema, include table summaries in the context
+      if (enhancedSchema) {
+        additionalContext = `\n\nTable Summaries (for better understanding of data):\n`;
 
-        table.columns.forEach((column: any) => {
-          if (column.summary) {
-            const summary = column.summary;
-            additionalContext += `  - ${column.name} (${column.type}): `;
+        enhancedSchema.tableSummaries.forEach((table) => {
+          additionalContext += `\n${table.name} (${table.rowCount} rows):\n`;
 
-            if (summary.distinctValues && summary.distinctValues.length <= 20) {
-              additionalContext += `Distinct values: ${summary.distinctValues.join(
-                ", "
-              )}`;
-            } else if (summary.topValues && summary.topValues.length > 0) {
-              const topVals = summary.topValues
-                .slice(0, 5)
-                .map((v: any) => `${v.value}(${v.count})`)
-                .join(", ");
-              additionalContext += `Top values: ${topVals}`;
+          table.columns.forEach((column: any) => {
+            if (column.summary) {
+              const summary = column.summary;
+              additionalContext += `  - ${column.name} (${column.type}): `;
+
+              if (
+                summary.distinctValues &&
+                summary.distinctValues.length <= 20
+              ) {
+                additionalContext += `Distinct values: ${summary.distinctValues.join(
+                  ", "
+                )}`;
+              } else if (summary.topValues && summary.topValues.length > 0) {
+                const topVals = summary.topValues
+                  .slice(0, 5)
+                  .map((v: any) => `${v.value}(${v.count})`)
+                  .join(", ");
+                additionalContext += `Top values: ${topVals}`;
+              }
+
+              if (summary.min !== undefined && summary.max !== undefined) {
+                additionalContext += ` Range: ${summary.min} to ${summary.max}`;
+              }
+
+              if (summary.mean !== undefined && summary.mean !== null) {
+                additionalContext += ` Mean: ${summary.mean.toFixed(2)}`;
+              }
+
+              if (
+                summary.nullCount !== undefined &&
+                summary.totalCount !== undefined
+              ) {
+                const nullPercent = (
+                  (summary.nullCount / summary.totalCount) *
+                  100
+                ).toFixed(1);
+                additionalContext += ` (${nullPercent}% null)`;
+              }
+
+              additionalContext += `\n`;
             }
-
-            if (summary.min !== undefined && summary.max !== undefined) {
-              additionalContext += ` Range: ${summary.min} to ${summary.max}`;
-            }
-
-            if (summary.mean !== undefined && summary.mean !== null) {
-              additionalContext += ` Mean: ${summary.mean.toFixed(2)}`;
-            }
-
-            if (
-              summary.nullCount !== undefined &&
-              summary.totalCount !== undefined
-            ) {
-              const nullPercent = (
-                (summary.nullCount / summary.totalCount) *
-                100
-              ).toFixed(1);
-              additionalContext += ` (${nullPercent}% null)`;
-            }
-
-            additionalContext += `\n`;
-          }
+          });
         });
+      }
+
+      const result = await generateObject({
+        model: openai("gpt-4o"),
+        system: `You are a SQL (postgres) and data visualization expert. Your job is to help the user write a SQL query to retrieve the data they need. The table schema is as follows:
+
+    ${schemaToUse}${additionalContext}
+
+    Only retrieval queries are allowed. Do not generate queries that modify data.
+
+    IMPORTANT: Only use column names that actually exist in the schema above. Do not invent or assume column names that aren't explicitly defined in the schema. Double-check all column references against the schema before finalizing your query.
+
+    When you have table summaries available, use them to:
+    - Choose appropriate WHERE clauses based on actual data values
+    - Understand the data distribution for better aggregations
+    - Use actual category values when filtering text columns
+    - Consider the data ranges when creating meaningful groupings
+
+    You can use standard PostgreSQL functions like DATE_TRUNC, EXTRACT, TO_CHAR, etc. when appropriate for date/time manipulation and formatting. For example:
+    - DATE_TRUNC('month', date_column) to truncate a date to the month level
+    - EXTRACT(YEAR FROM date_column) to extract the year from a date
+    - TO_CHAR(date_column, 'YYYY-MM') to format a date as year-month
+
+    For string fields, use the ILIKE operator with wildcards and convert both the search term and the field to lowercase using LOWER() function for case-insensitive matching. For example: LOWER(column_name) ILIKE LOWER('%search_term%').
+
+    When answering questions about specific entities, ensure you are selecting both the identifying column and the relevant data columns to provide context.
+
+    For text fields that may contain comma-separated values, use string functions like TRIM() when comparing to ensure accurate results.
+
+    If the user asks for temporal trends or data 'over time', group by the appropriate time unit (year, month, day) based on available date/timestamp columns. Use DATE_TRUNC to group by time periods. For example:
+    - GROUP BY DATE_TRUNC('month', date_column)
+    - GROUP BY DATE_TRUNC('year', date_column)
+    - GROUP BY EXTRACT(YEAR FROM date_column)
+
+    For abbreviations or acronyms in search terms, consider both the abbreviated and full forms in your query when appropriate.
+    
+    If the user asks for a rate, return it as a decimal. For example, 0.1 would be 10%.
+
+    EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single value, include a relevant grouping dimension or return a count alongside it.
+    
+    IMPORTANT: Always include a LIMIT clause in your query to prevent returning too many rows. Use LIMIT ${defaultLimit} by default unless the user specifically asks for more or fewer results.`,
+        prompt: `Generate the query necessary to retrieve the data the user wants: ${input}`,
+        schema: z.object({
+          query: z.string(),
+          validation: z
+            .object({
+              isValid: z.boolean(),
+              issues: z.array(z.string()).optional(),
+            })
+            .optional(),
+        }),
       });
+
+      // If validation is provided and there are issues, return structured error info instead of throwing
+      if (result.object.validation && !result.object.validation.isValid) {
+        const issues = result.object.validation.issues || [
+          "Unknown column name issue",
+        ];
+        return {
+          error: true,
+          message: `SQL query validation failed: ${issues.join(", ")}`,
+          issues: issues,
+          query: result.object.query, // Include the generated query for reference
+        };
+      }
+
+      // Ensure the query has a LIMIT clause
+      const finalQuery = await ensureQueryHasLimit(result.object.query);
+
+      return { error: false, query: finalQuery };
+    } catch (e: any) {
+      console.error(
+        `Query generation attempt ${attempt + 1} failed:`,
+        e.message
+      );
+
+      // Check if it's a rate limit error
+      if (e.message && e.message.includes("Rate limit reached")) {
+        if (attempt < maxRetries - 1) {
+          // Extract wait time from error message, or use exponential backoff
+          const waitMatch = e.message.match(/try again in ([\d.]+)s/);
+          const waitTime = waitMatch
+            ? parseFloat(waitMatch[1]) * 1000
+            : Math.pow(2, attempt) * 1000;
+
+          console.log(
+            `Rate limit hit, waiting ${waitTime}ms before retry ${
+              attempt + 2
+            }/${maxRetries}`
+          );
+          await sleep(waitTime);
+          continue;
+        }
+      }
+
+      // If it's the last attempt or not a rate limit error, return error
+      if (attempt === maxRetries - 1) {
+        return {
+          error: true,
+          message: "Failed to generate query after multiple attempts",
+          details: e instanceof Error ? e.message : String(e),
+        };
+      }
     }
-
-    const result = await generateObject({
-      model: openai("gpt-4o"),
-      system: `You are a SQL (postgres) and data visualization expert. Your job is to help the user write a SQL query to retrieve the data they need. The table schema is as follows:
-
-  ${schemaToUse}${additionalContext}
-
-  Only retrieval queries are allowed. Do not generate queries that modify data.
-
-  IMPORTANT: Only use column names that actually exist in the schema above. Do not invent or assume column names that aren't explicitly defined in the schema. Double-check all column references against the schema before finalizing your query.
-
-  When you have table summaries available, use them to:
-  - Choose appropriate WHERE clauses based on actual data values
-  - Understand the data distribution for better aggregations
-  - Use actual category values when filtering text columns
-  - Consider the data ranges when creating meaningful groupings
-
-  You can use standard PostgreSQL functions like DATE_TRUNC, EXTRACT, TO_CHAR, etc. when appropriate for date/time manipulation and formatting. For example:
-  - DATE_TRUNC('month', date_column) to truncate a date to the month level
-  - EXTRACT(YEAR FROM date_column) to extract the year from a date
-  - TO_CHAR(date_column, 'YYYY-MM') to format a date as year-month
-
-  For string fields, use the ILIKE operator with wildcards and convert both the search term and the field to lowercase using LOWER() function for case-insensitive matching. For example: LOWER(column_name) ILIKE LOWER('%search_term%').
-
-  When answering questions about specific entities, ensure you are selecting both the identifying column and the relevant data columns to provide context.
-
-  For text fields that may contain comma-separated values, use string functions like TRIM() when comparing to ensure accurate results.
-
-  If the user asks for temporal trends or data 'over time', group by the appropriate time unit (year, month, day) based on available date/timestamp columns. Use DATE_TRUNC to group by time periods. For example:
-  - GROUP BY DATE_TRUNC('month', date_column)
-  - GROUP BY DATE_TRUNC('year', date_column)
-  - GROUP BY EXTRACT(YEAR FROM date_column)
-
-  For abbreviations or acronyms in search terms, consider both the abbreviated and full forms in your query when appropriate.
-  
-  If the user asks for a rate, return it as a decimal. For example, 0.1 would be 10%.
-
-  EVERY QUERY SHOULD RETURN QUANTITATIVE DATA THAT CAN BE PLOTTED ON A CHART! There should always be at least two columns. If the user asks for a single value, include a relevant grouping dimension or return a count alongside it.
-  
-  IMPORTANT: Always include a LIMIT clause in your query to prevent returning too many rows. Use LIMIT ${defaultLimit} by default unless the user specifically asks for more or fewer results.`,
-      prompt: `Generate the query necessary to retrieve the data the user wants: ${input}`,
-      schema: z.object({
-        query: z.string(),
-        validation: z
-          .object({
-            isValid: z.boolean(),
-            issues: z.array(z.string()).optional(),
-          })
-          .optional(),
-      }),
-    });
-
-    // If validation is provided and there are issues, return structured error info instead of throwing
-    if (result.object.validation && !result.object.validation.isValid) {
-      const issues = result.object.validation.issues || [
-        "Unknown column name issue",
-      ];
-      return {
-        error: true,
-        message: `SQL query validation failed: ${issues.join(", ")}`,
-        issues: issues,
-        query: result.object.query, // Include the generated query for reference
-      };
-    }
-
-    // Ensure the query has a LIMIT clause
-    const finalQuery = await ensureQueryHasLimit(result.object.query);
-
-    return { error: false, query: finalQuery };
-  } catch (e) {
-    console.error(e);
-    return {
-      error: true,
-      message: "Failed to generate query",
-      details: e instanceof Error ? e.message : String(e),
-    };
   }
+
+  // This should never be reached, but TypeScript requires it
+  return {
+    error: true,
+    message: "Unexpected error in query generation",
+  };
 };
 
 export const runGenerateSQLQuery = async (
@@ -663,85 +702,123 @@ export const explainQuery = async (
   sqlQuery: string,
   connectionUrl: string,
   existingSchema?: string,
-  connectionName?: string
+  connectionName?: string,
+  maxRetries: number = 3
 ) => {
   "use server";
-  try {
-    // Try to load enhanced schema first if connection name is provided
-    let enhancedSchema: EnhancedDatabaseSchema | undefined;
-    if (connectionName) {
-      enhancedSchema = await loadEnhancedSchema(connectionName);
-    }
 
-    // Use existing schema if provided, otherwise use cached schema if available, or fetch from database as last resort
-    let dbSchema;
-    if (existingSchema) {
-      dbSchema = existingSchema;
-    } else if (enhancedSchema) {
-      // Use the cached basic schema from enhanced schema instead of fetching from DB
-      dbSchema = enhancedSchema.basicSchema;
-      console.log(`Using cached schema for explanation: ${connectionName}`);
-    } else {
-      // Only fetch from database if no cached data is available
-      console.log(
-        `No cached schema found for explanation, fetching from database`
-      );
-      dbSchema = await getDatabaseSchema(connectionUrl);
-    }
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Try to load enhanced schema first if connection name is provided
+      let enhancedSchema: EnhancedDatabaseSchema | undefined;
+      if (connectionName) {
+        enhancedSchema = await loadEnhancedSchema(connectionName);
+      }
 
-    // Use schema if available
-    let schemaToUse = dbSchema;
-    let additionalContext = "";
+      // Use existing schema if provided, otherwise use cached schema if available, or fetch from database as last resort
+      let dbSchema;
+      if (existingSchema) {
+        dbSchema = existingSchema;
+      } else if (enhancedSchema) {
+        // Use the cached basic schema from enhanced schema instead of fetching from DB
+        dbSchema = enhancedSchema.basicSchema;
+        console.log(`Using cached schema for explanation: ${connectionName}`);
+      } else {
+        // Only fetch from database if no cached data is available
+        console.log(
+          `No cached schema found for explanation, fetching from database`
+        );
+        dbSchema = await getDatabaseSchema(connectionUrl);
+      }
 
-    // If we have enhanced schema, include simplified table summaries for context
-    if (enhancedSchema) {
-      additionalContext = `\n\nTable Context:\n`;
-      enhancedSchema.tableSummaries.forEach((table) => {
-        additionalContext += `${table.name} (${table.rowCount} rows), `;
+      // Use schema if available
+      let schemaToUse = dbSchema;
+      let additionalContext = "";
+
+      // If we have enhanced schema, include simplified table summaries for context
+      if (enhancedSchema) {
+        additionalContext = `\n\nTable Context:\n`;
+        enhancedSchema.tableSummaries.forEach((table) => {
+          additionalContext += `${table.name} (${table.rowCount} rows), `;
+        });
+        additionalContext = additionalContext.slice(0, -2); // Remove trailing comma
+      }
+
+      const result = await generateObject({
+        model: openai("gpt-4o"),
+        schema: z.object({
+          explanations: explanationsSchema,
+        }),
+        system: `You are a SQL (postgres) expert. Your job is to explain SQL queries in a clear, concise manner that helps users understand how the query works. The database schema is as follows:
+      ${schemaToUse}${additionalContext}
+
+      Break down your explanation into logical sections of the query. For each section:
+      1. Identify a distinct part of the query (SELECT clause, FROM clause, WHERE conditions, etc.)
+      2. Explain what that section accomplishes in plain language
+      3. If a section doesn't need explanation, include it but leave the explanation empty
+
+      Focus on helping non-technical users understand the query logic without getting into advanced SQL concepts unless necessary.
+      `,
+        prompt: `Explain the SQL query you generated to retrieve the data the user wanted. Assume the user is not an expert in SQL. Break down the query into steps. Be concise.
+
+        User Query:
+        ${input}
+
+        Generated SQL Query:
+        ${sqlQuery}`,
       });
-      additionalContext = additionalContext.slice(0, -2); // Remove trailing comma
+
+      return result.object;
+    } catch (e: any) {
+      console.error(
+        `Query explanation attempt ${attempt + 1} failed:`,
+        e.message
+      );
+
+      // Check if it's a rate limit error
+      if (e.message && e.message.includes("Rate limit reached")) {
+        if (attempt < maxRetries - 1) {
+          // Extract wait time from error message, or use exponential backoff
+          const waitMatch = e.message.match(/try again in ([\d.]+)s/);
+          const waitTime = waitMatch
+            ? parseFloat(waitMatch[1]) * 1000
+            : Math.pow(2, attempt) * 1000;
+
+          console.log(
+            `Rate limit hit, waiting ${waitTime}ms before retry ${
+              attempt + 2
+            }/${maxRetries}`
+          );
+          await sleep(waitTime);
+          continue;
+        }
+      }
+
+      // If it's the last attempt or not a rate limit error, throw
+      if (attempt === maxRetries - 1) {
+        throw new Error(
+          "Failed to generate query explanation after multiple attempts"
+        );
+      }
     }
-
-    const result = await generateObject({
-      model: openai("gpt-4o"),
-      schema: z.object({
-        explanations: explanationsSchema,
-      }),
-      system: `You are a SQL (postgres) expert. Your job is to explain SQL queries in a clear, concise manner that helps users understand how the query works. The database schema is as follows:
-    ${schemaToUse}${additionalContext}
-
-    Break down your explanation into logical sections of the query. For each section:
-    1. Identify a distinct part of the query (SELECT clause, FROM clause, WHERE conditions, etc.)
-    2. Explain what that section accomplishes in plain language
-    3. If a section doesn't need explanation, include it but leave the explanation empty
-
-    Focus on helping non-technical users understand the query logic without getting into advanced SQL concepts unless necessary.
-    `,
-      prompt: `Explain the SQL query you generated to retrieve the data the user wanted. Assume the user is not an expert in SQL. Break down the query into steps. Be concise.
-
-      User Query:
-      ${input}
-
-      Generated SQL Query:
-      ${sqlQuery}`,
-    });
-    return result.object;
-  } catch (e) {
-    console.error(e);
-    throw new Error("Failed to generate query");
   }
 };
 
+// Helper function to sleep for a given number of milliseconds
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const generateChartConfig = async (
   results: Result[],
-  userQuery: string
+  userQuery: string,
+  maxRetries: number = 3
 ) => {
   "use server";
 
-  try {
-    const { object: config } = await generateObject({
-      model: openai("gpt-4o"),
-      system: `You are a data visualization expert specializing in selecting the most appropriate chart types for different data patterns. Your goal is to create visualizations that effectively communicate insights while being accessible and easy to interpret.
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { object: config } = await generateObject({
+        model: openai("gpt-4o"),
+        system: `You are a data visualization expert specializing in selecting the most appropriate chart types for different data patterns. Your goal is to create visualizations that effectively communicate insights while being accessible and easy to interpret.
 
 Choose chart types based on these principles:
 - Bar charts for comparing discrete categories
@@ -752,41 +829,69 @@ Choose chart types based on these principles:
 - Multi-series charts when comparing multiple related metrics
 
 Ensure your visualization choices prioritize clarity, minimize chart junk, and accurately represent the underlying data.`,
-      prompt: `Given the following data from a SQL query result, generate the chart config that best visualises the data and answers the users query.
-      For multiple groups use multi-lines.
+        prompt: `Given the following data from a SQL query result, generate the chart config that best visualises the data and answers the users query.
+        For multiple groups use multi-lines.
 
-      Here is an example complete config:
-      export const chartConfig = {
-        type: "pie",
-        xKey: "month",
-        yKeys: ["sales", "profit", "expenses"],
-        colors: {
-          sales: "#4CAF50",    // Green for sales
-          profit: "#2196F3",   // Blue for profit
-          expenses: "#F44336"  // Red for expenses
-        },
-        legend: true
+        Here is an example complete config:
+        export const chartConfig = {
+          type: "pie",
+          xKey: "month",
+          yKeys: ["sales", "profit", "expenses"],
+          colors: {
+            sales: "#4CAF50",    // Green for sales
+            profit: "#2196F3",   // Blue for profit
+            expenses: "#F44336"  // Red for expenses
+          },
+          legend: true
+        }
+
+        User Query:
+        ${userQuery}
+
+        Data:
+        ${JSON.stringify(results, null, 2)}`,
+        schema: configSchema,
+      });
+
+      const colors: Record<string, string> = {};
+      config.yKeys.forEach((key, index) => {
+        colors[key] = `hsl(var(--chart-${index + 1}))`;
+      });
+
+      const updatedConfig: Config = { ...config, colors };
+      return { config: updatedConfig };
+    } catch (e: any) {
+      console.error(
+        `Chart config generation attempt ${attempt + 1} failed:`,
+        e.message
+      );
+
+      // Check if it's a rate limit error
+      if (e.message && e.message.includes("Rate limit reached")) {
+        if (attempt < maxRetries - 1) {
+          // Extract wait time from error message, or use exponential backoff
+          const waitMatch = e.message.match(/try again in ([\d.]+)s/);
+          const waitTime = waitMatch
+            ? parseFloat(waitMatch[1]) * 1000
+            : Math.pow(2, attempt) * 1000;
+
+          console.log(
+            `Rate limit hit, waiting ${waitTime}ms before retry ${
+              attempt + 2
+            }/${maxRetries}`
+          );
+          await sleep(waitTime);
+          continue;
+        }
       }
 
-      User Query:
-      ${userQuery}
-
-      Data:
-      ${JSON.stringify(results, null, 2)}`,
-      schema: configSchema,
-    });
-
-    const colors: Record<string, string> = {};
-    config.yKeys.forEach((key, index) => {
-      colors[key] = `hsl(var(--chart-${index + 1}))`;
-    });
-
-    const updatedConfig: Config = { ...config, colors };
-    return { config: updatedConfig };
-  } catch (e) {
-    // @ts-expect-errore
-    console.error(e.message);
-    throw new Error("Failed to generate chart suggestion");
+      // If it's the last attempt or not a rate limit error, throw
+      if (attempt === maxRetries - 1) {
+        throw new Error(
+          "Failed to generate chart suggestion after multiple attempts"
+        );
+      }
+    }
   }
 };
 
