@@ -53,12 +53,12 @@ export default function Sidebar() {
   return (
     <div className="fixed top-0 left-0 flex flex-col w-72 h-screen border-r border-gray-200/60 shadow-lg bg-white/95 backdrop-blur-xl dark:bg-neutral-950/95 dark:border-neutral-800/60">
       {/* Header Section */}
-      <div className="px-6 py-6 border-b border-gray-100 dark:border-neutral-800/50">
-        <div className="flex items-center justify-center mb-2">
+      <div className="px-6 py-8 border-b border-gray-100 dark:border-neutral-800/50">
+        <div className="flex items-center justify-center mb-4">
           <Logo />
         </div>
         <div className="text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+          <p className="text-md text-gray-500 dark:text-gray-400 font-medium">
             AI Database Assistant
           </p>
         </div>

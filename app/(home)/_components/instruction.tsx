@@ -6,14 +6,14 @@ const Instruction = () => {
       <div className="relative">
         <div className="relative p-4 bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950/30 dark:to-purple-950/30 rounded-full">
           <Bot className="w-16 h-16 text-blue-600 dark:text-blue-400" />
-          <div className="absolute -top-2 -right-2">
+          {/* <div className="absolute -top-2 -right-2">
             <div className="p-2 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-          </div>
+          </div> */}
         </div>
-        <div className="absolute -bottom-1 -right-1">
-          <Database className="w-6 h-6 text-green-600 dark:text-green-400" />
+        <div className="absolute bottom-0 -right-1">
+          <Database className="w-6 h-6 text-blue-600 dark:text-blue-400" />
         </div>
       </div>
       <div className="max-w-md space-y-2">

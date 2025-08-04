@@ -26,10 +26,10 @@ const Logo = () => {
           />
         )}
       </div>
-      <span className="text-2xl font-bold relative">
+      {/* <span className="text-2xl font-bold relative">
         {theme === "light" ? (
           <span className="bg-gradient-to-b from-blue-500 via-blue-600 to-blue-700 bg-clip-text text-transparent transition-all duration-300 [text-shadow:0_1px_2px_rgba(0,0,0,0.2)]">
-            DB Chat
+            DBChat
           </span>
         ) : (
           <span className="bg-gradient-to-b from-slate-300 via-gray-400 to-slate-600 bg-clip-text text-transparent transition-all duration-300 [text-shadow:0_1px_1px_rgba(255,255,255,0.1)]">
@@ -37,7 +37,7 @@ const Logo = () => {
           </span>
         )}
         <span className="absolute -inset-1 bg-blue-500/20 dark:bg-blue-400/20 rounded-lg blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-      </span>
+      </span> */}
     </Link>
   );
 };
