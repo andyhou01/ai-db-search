@@ -696,9 +696,7 @@ export default function Page() {
 
                                                 <div className="flex-1 min-w-0">
                                                   <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2">
-                                                    <span>
-                                                      Key Recommendation
-                                                    </span>
+                                                    <span>Suggestion</span>
                                                     <div className="h-px flex-1 bg-gradient-to-r from-amber-300/50 to-transparent"></div>
                                                   </h4>
                                                   <p className="text-sm text-amber-900 dark:text-amber-100 leading-relaxed font-medium">
