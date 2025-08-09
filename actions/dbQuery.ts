@@ -385,6 +385,7 @@ export const generateQuery = async (
   existingSchema?: string,
   defaultLimit: number = 100,
   connectionName?: string,
+  businessLogic?: string,
   maxRetries: number = 3
 ): Promise<
   | {
@@ -483,6 +484,17 @@ export const generateQuery = async (
         });
       }
 
+      // Prepare business logic context
+      let businessContext = "";
+      if (businessLogic && businessLogic.trim()) {
+        businessContext = `\n\nBUSINESS CONTEXT & LOGIC:\n${businessLogic.trim()}\n\nUse this business context to better understand:
+        - Table relationships and their business meaning
+        - Key business metrics and how they should be calculated
+        - Business rules that should be applied in queries
+        - Common business questions and how to interpret them
+        - Domain-specific terminology and what it refers to in the data`;
+      }
+
       const response = await client.chat.completions.create({
         model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
         messages: [
@@ -493,6 +505,8 @@ export const generateQuery = async (
     ${schemaToUse}
     
     ${additionalContext}
+    
+    ${businessContext}
 
     Only retrieval queries are allowed. Do not generate queries that modify data.
 
@@ -805,6 +819,7 @@ export const explainQuery = async (
   connectionUrl: string,
   existingSchema?: string,
   connectionName?: string,
+  businessLogic?: string,
   maxRetries: number = 3
 ) => {
   "use server";
@@ -846,13 +861,19 @@ export const explainQuery = async (
         additionalContext = additionalContext.slice(0, -2); // Remove trailing comma
       }
 
+      // Add business logic context
+      let businessContext = "";
+      if (businessLogic && businessLogic.trim()) {
+        businessContext = `\n\nBUSINESS CONTEXT:\n${businessLogic.trim()}\n\nUse this context to provide business-relevant explanations that help users understand not just what the query does technically, but why it makes sense from a business perspective.`;
+      }
+
       const response = await client.chat.completions.create({
         model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-4o",
         messages: [
           {
             role: "system",
             content: `You are a SQL (postgres) expert. Your job is to explain SQL queries in a clear, concise manner that helps users understand how the query works. The database schema is as follows:
-      ${schemaToUse}${additionalContext}
+      ${schemaToUse}${additionalContext}${businessContext}
 
       Break down your explanation into logical sections of the query. For each section:
       1. Identify a distinct part of the query (SELECT clause, FROM clause, WHERE conditions, etc.)

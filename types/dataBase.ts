@@ -9,6 +9,7 @@ export interface ConnectionConfig {
   url?: string;
   schema?: DatabaseSchema;
   schemaString?: string;
+  businessLogic?: string; // Business context and logic description
 }
 
 export interface ColumnSummary {

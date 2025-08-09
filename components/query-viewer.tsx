@@ -11,11 +11,13 @@ export const QueryViewer = ({
   inputValue,
   connectionUrl,
   connectionName,
+  businessLogic,
 }: {
   activeQuery: string;
   inputValue: string;
   connectionUrl?: string;
   connectionName?: string;
+  businessLogic?: string;
 }) => {
   const activeQueryCutoff = 100;
 
@@ -56,7 +58,8 @@ export const QueryViewer = ({
         activeQuery,
         connectionUrl,
         undefined,
-        connectionName
+        connectionName,
+        businessLogic
       );
       setQueryExplanations(explanations);
     } catch (error) {

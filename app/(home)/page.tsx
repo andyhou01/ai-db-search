@@ -12,6 +12,7 @@ import {
   shouldVisualizeData,
 } from "@/actions/dbQuery";
 import { Config, Result, AIAnswer } from "@/lib/types";
+import { ConnectionConfig } from "@/types/dataBase";
 import {
   Loader2,
   Send,
@@ -78,14 +79,20 @@ export default function Page() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(1);
-  const [connections, setConnections] = useState<
-    Array<{ name: string; url: string }>
-  >([]);
+  const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [selectedConnection, setSelectedConnection] = useState<string>("");
   const [selectedConnectionName, setSelectedConnectionName] =
     useState<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Helper function to get the current connection's business logic
+  const getBusinessLogic = () => {
+    const currentConnection = connections.find(
+      (conn) => conn.url === selectedConnection
+    );
+    return currentConnection?.businessLogic || "";
+  };
 
   useEffect(() => {
     const savedConnections = localStorage.getItem("dbConnections");
@@ -153,7 +160,8 @@ export default function Page() {
         selectedConnection,
         undefined,
         100,
-        selectedConnectionName
+        selectedConnectionName,
+        getBusinessLogic()
       );
 
       // Check if query generation failed
@@ -811,6 +819,7 @@ export default function Page() {
                                     inputValue=""
                                     connectionUrl={selectedConnection}
                                     connectionName={selectedConnectionName}
+                                    businessLogic={getBusinessLogic()}
                                   />
                                 </div>
                               )}

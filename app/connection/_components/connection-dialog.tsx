@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -137,6 +138,8 @@ const ConnectionDialog = ({
         username: "",
         password: "",
         database: "",
+        // Keep businessLogic field
+        businessLogic: newConnection.businessLogic || "",
       };
 
       if (isEditing) {
@@ -232,6 +235,7 @@ const ConnectionDialog = ({
             password: "",
             database: "",
             url: "",
+            businessLogic: "",
           });
           setErrors({});
           setSchemaPreview(null);
@@ -339,6 +343,47 @@ const ConnectionDialog = ({
               </div>
             </div>
           )}
+
+          {/* Business Logic field */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="businessLogic">Business Logic & Context</Label>
+              <span className="text-xs text-muted-foreground">Optional</span>
+            </div>
+            <Textarea
+              id="businessLogic"
+              value={newConnection.businessLogic || ""}
+              onChange={(e) =>
+                setNewConnection({
+                  ...newConnection,
+                  businessLogic: e.target.value,
+                })
+              }
+              placeholder="Describe your business domain, table relationships, key metrics, common queries, or any business rules that would help the AI understand your data better..."
+              className="min-h-[100px] resize-none"
+              rows={4}
+            />
+            {/* <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <div className="w-4 h-4 mt-0.5 flex-shrink-0">💡</div>
+              <div>
+                <p className="font-medium mb-1">Example contexts:</p>
+                <ul className="space-y-0.5 text-xs">
+                  <li>
+                    • "This is an e-commerce database where 'orders' connect to
+                    'customers' and 'products'"
+                  </li>
+                  <li>
+                    • "Key metrics: revenue (sum of order_total), customer
+                    lifetime value"
+                  </li>
+                  <li>
+                    • "Business rules: active customers have purchased within
+                    last 90 days"
+                  </li>
+                </ul>
+              </div>
+            </div> */}
+          </div>
         </div>
 
         <div className="flex justify-between gap-4">

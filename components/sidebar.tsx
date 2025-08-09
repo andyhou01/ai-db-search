@@ -30,11 +30,11 @@ export default function Sidebar() {
       icon: BotMessageSquare,
       path: "/",
     },
-    // {
-    //   name: "Query History",
-    //   icon: History,
-    //   path: "/history",
-    // },
+    {
+      name: "Query History",
+      icon: History,
+      path: "/history",
+    },
     {
       name: "DB Connection",
       icon: Database,
